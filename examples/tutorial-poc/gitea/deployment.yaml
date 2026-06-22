@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gitea
+  namespace: gitea
+  labels:
+    app: gitea
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gitea
+  template:
+    metadata:
+      labels:
+        app: gitea
+    spec:
+      containers:
+        - name: gitea
+          image: gitea/gitea:1.23-rootless
+          ports:
+            - containerPort: 3000
+              name: http
+          env:
+            - name: GITEA__database__DB_TYPE
+              value: sqlite3
+            - name: GITEA__security__INSTALL_LOCK
+              value: "true"
+            - name: GITEA__server__ROOT_URL
+              value: http://localhost:3000
+            - name: GITEA__server__HTTP_PORT
+              value: "3000"
+            - name: GITEA__service__DISABLE_REGISTRATION
+              value: "true"
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/gitea
+            - name: config
+              mountPath: /etc/gitea
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /api/v1/version
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: config
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gitea-http
+  namespace: gitea
+  labels:
+    app: gitea
+spec:
+  type: NodePort
+  selector:
+    app: gitea
+  ports:
+    - port: 3000
+      targetPort: 3000
+      nodePort: 30003
+      name: http
