@@ -2,10 +2,12 @@
 set -euo pipefail
 
 CLUSTER_NAME="gitops-tutorial"
+CLUSTER_PROVIDER="${CLUSTER_PROVIDER:-}"
 GITEA_USER="tutorial-user"
 GITEA_PASSWORD="tutorial-password"
 GITEA_REPO="streamshub-gitops"
 GITEA_HOST_PORT=3000
+PORT_FORWARD_PID=""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 info()  { echo -e "\033[1;34m[INFO]\033[0m  $*"; }
@@ -13,38 +15,79 @@ warn()  { echo -e "\033[1;33m[WARN]\033[0m  $*"; }
 error() { echo -e "\033[1;31m[ERROR]\033[0m $*" >&2; }
 
 cleanup() {
+  local exit_code=$?
+  # Only kill the port-forward if the script failed — on success the user needs it
+  if [[ ${exit_code} -ne 0 ]] && [[ -n "${PORT_FORWARD_PID:-}" ]] && kill -0 "${PORT_FORWARD_PID}" 2>/dev/null; then
+    kill "${PORT_FORWARD_PID}" 2>/dev/null || true
+    wait "${PORT_FORWARD_PID}" 2>/dev/null || true
+  fi
   if [[ -n "${WORK_DIR:-}" ]]; then
     rm -rf "${WORK_DIR}"
   fi
 }
+trap cleanup EXIT
 
 # ─── Step 1: Check prerequisites ───────────────────────────────────────────────
 
 info "Checking prerequisites..."
-for cmd in kind kubectl git curl; do
+for cmd in kubectl git curl; do
   if ! command -v "$cmd" &>/dev/null; then
     error "'$cmd' is required but not found in PATH."
     exit 1
   fi
 done
 
-if ! docker info &>/dev/null 2>&1; then
-  error "Docker is not running. Please start Docker Desktop or your container runtime."
-  exit 1
-fi
+if [[ -z "${CLUSTER_PROVIDER}" ]]; then
+  HAS_KIND=false
+  HAS_MINIKUBE=false
+  command -v kind &>/dev/null && HAS_KIND=true
+  command -v minikube &>/dev/null && HAS_MINIKUBE=true
 
-info "All prerequisites satisfied."
-
-# ─── Step 2: Create KinD cluster ───────────────────────────────────────────────
-
-if kind get clusters 2>/dev/null | grep -q "^${CLUSTER_NAME}$"; then
-  info "KinD cluster '${CLUSTER_NAME}' already exists, skipping creation."
+  if [[ "${HAS_KIND}" == "true" && "${HAS_MINIKUBE}" == "true" ]]; then
+    CLUSTER_PROVIDER="kind"
+    info "Both kind and minikube found. Using kind. Set CLUSTER_PROVIDER=minikube to use minikube instead."
+  elif [[ "${HAS_KIND}" == "true" ]]; then
+    CLUSTER_PROVIDER="kind"
+  elif [[ "${HAS_MINIKUBE}" == "true" ]]; then
+    CLUSTER_PROVIDER="minikube"
+  else
+    error "Neither 'kind' nor 'minikube' found in PATH. Install one of them to continue."
+    exit 1
+  fi
 else
-  info "Creating KinD cluster '${CLUSTER_NAME}'..."
-  kind create cluster --name "${CLUSTER_NAME}" --config "${SCRIPT_DIR}/kind-config.yaml"
+  if [[ "${CLUSTER_PROVIDER}" != "kind" && "${CLUSTER_PROVIDER}" != "minikube" ]]; then
+    error "CLUSTER_PROVIDER must be 'kind' or 'minikube', got '${CLUSTER_PROVIDER}'."
+    exit 1
+  fi
+  if ! command -v "${CLUSTER_PROVIDER}" &>/dev/null; then
+    error "'${CLUSTER_PROVIDER}' is set as CLUSTER_PROVIDER but not found in PATH."
+    exit 1
+  fi
 fi
 
-kubectl cluster-info --context "kind-${CLUSTER_NAME}" >/dev/null 2>&1
+info "Using cluster provider: ${CLUSTER_PROVIDER}"
+
+# ─── Step 2: Ensure a cluster is available ────────────────────────────────────
+
+if [[ "${CLUSTER_PROVIDER}" == "kind" ]]; then
+  if ! docker info &>/dev/null 2>&1; then
+    error "Docker is not running. KinD requires Docker — please start it and try again."
+    exit 1
+  fi
+  if kind get clusters 2>/dev/null | grep -q "^${CLUSTER_NAME}$"; then
+    info "KinD cluster '${CLUSTER_NAME}' already exists, skipping creation."
+  else
+    info "Creating KinD cluster '${CLUSTER_NAME}'..."
+    kind create cluster --name "${CLUSTER_NAME}" --config "${SCRIPT_DIR}/kind-config.yaml"
+  fi
+  kubectl cluster-info --context "kind-${CLUSTER_NAME}" >/dev/null 2>&1
+elif [[ "${CLUSTER_PROVIDER}" == "minikube" ]]; then
+  if ! kubectl cluster-info >/dev/null 2>&1; then
+    error "kubectl cannot reach a cluster. Start Minikube first: minikube start"
+    exit 1
+  fi
+  info "Using existing Minikube cluster."
+fi
 info "Cluster is ready."
 
 # ─── Step 3: Install ArgoCD ───────────────────────────────────────────────────
@@ -108,6 +151,18 @@ for i in $(seq 1 30); do
   sleep 2
 done
 
+# Start port-forward for Minikube (KinD uses extraPortMappings instead)
+if [[ "${CLUSTER_PROVIDER}" == "minikube" ]]; then
+  info "Starting port-forward to Gitea..."
+  kubectl port-forward svc/gitea-http -n gitea "${GITEA_HOST_PORT}:3000" >/dev/null 2>&1 &
+  PORT_FORWARD_PID=$!
+  sleep 2
+  if ! kill -0 "${PORT_FORWARD_PID}" 2>/dev/null; then
+    error "Port-forward to Gitea failed to start."
+    exit 1
+  fi
+fi
+
 # ─── Step 6: Configure Gitea ──────────────────────────────────────────────────
 
 info "Configuring Gitea user and repository..."
@@ -119,7 +174,7 @@ kubectl exec -n gitea "${GITEA_POD}" -- gitea admin user create \
   --email "tutorial@example.com" \
   --must-change-password=false 2>/dev/null || true
 
-# Wait for Gitea to be reachable on localhost via KinD NodePort mapping
+# Wait for Gitea to be reachable on localhost
 info "Waiting for Gitea to be reachable on localhost:${GITEA_HOST_PORT}..."
 GITEA_READY=false
 for i in $(seq 1 60); do
@@ -170,7 +225,6 @@ fi
 info "Seeding Gitea repository with tutorial manifests..."
 
 WORK_DIR=$(mktemp -d)
-trap cleanup EXIT
 
 git clone "http://${GITEA_USER}:${GITEA_PASSWORD}@localhost:${GITEA_HOST_PORT}/${GITEA_USER}/${GITEA_REPO}.git" "${WORK_DIR}/repo" 2>/dev/null
 
@@ -244,10 +298,17 @@ echo "     kubectl get kafkatopic -n kafka-tutorial -w"
 echo ""
 echo "  ArgoCD Dashboard:"
 echo "     kubectl port-forward svc/argocd-server -n argocd 8080:443"
-echo "     URL:      https://localhost:8080"
+echo "     URL:      https://localhost:8080  (accept the self-signed certificate warning)"
 echo "     Username: admin"
 echo "     Password: ${ARGOCD_PASSWORD}"
 echo ""
+if [[ "${CLUSTER_PROVIDER}" == "minikube" ]]; then
+  echo "  Gitea port-forward:"
+  echo "     Running in the background (PID ${PORT_FORWARD_PID})."
+  echo "     Gitea is available at http://localhost:3000"
+  echo "     If it stops, restart with: kubectl port-forward svc/gitea-http -n gitea 3000:3000 &"
+  echo ""
+fi
 echo "  Cleanup when done:"
 echo "     ./teardown.sh"
 echo ""
