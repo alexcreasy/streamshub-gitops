@@ -68,7 +68,7 @@ Before you make any changes, take a moment to explore the environment. This is w
 
 ### Clone the repository
 
-The Gitea server is running inside the cluster and is exposed on port 3000. Clone the repository it holds:
+The Gitea server is running inside the cluster and is exposed on port 3001. Clone the repository it holds:
 
 ```bash
 git clone http://tutorial-user:tutorial-password@localhost:3001/tutorial-user/streamshub-gitops.git /tmp/gitops-lesson-1
@@ -308,8 +308,8 @@ In **Lesson 2: Promotion from Staging to Production**, you will build on this en
 **Docker is not running**
 Start Docker Desktop or your container runtime and run `./setup.sh` again.
 
-**Port 3000 is already in use**
-Another application is using port 3000 (e.g., Grafana, a development server). Stop that application, or change the port in `kind-config.yaml` (update both `hostPort` and the `nodePort` in `gitea/deployment.yaml` to match).
+**Port 3001 is already in use**
+Another application is using port 3001 (e.g., a development server). Stop that application, or change the port in `kind-config.yaml` (update both `hostPort` and the `nodePort` in `gitea/deployment.yaml` to match).
 
 **Kafka cluster is not becoming ready**
 Kafka takes a few minutes to start, especially on machines with limited resources. Check pod status and events:

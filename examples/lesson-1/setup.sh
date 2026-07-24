@@ -138,7 +138,8 @@ TOKEN_RESPONSE=$(curl -sf -X POST \
   -H "Content-Type: application/json" \
   -d '{"name":"setup-token","scopes":["all"]}' 2>/dev/null || echo "{}")
 
-TOKEN=$(echo "${TOKEN_RESPONSE}" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('sha1') or d.get('token',''))" 2>/dev/null || echo "")
+TOKEN=$(echo "${TOKEN_RESPONSE}" | grep -o '"sha1":"[^"]*"' | cut -d'"' -f4)
+[[ -z "${TOKEN}" ]] && TOKEN=$(echo "${TOKEN_RESPONSE}" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
 
 if [[ -z "${TOKEN}" ]]; then
   error "Failed to create Gitea access token. Response: ${TOKEN_RESPONSE}"
