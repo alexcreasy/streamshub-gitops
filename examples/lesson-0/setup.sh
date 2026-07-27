@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CLUSTER_NAME="gitops-lesson-1"
+CLUSTER_NAME="gitops-tutorial"
 GITEA_USER="tutorial-user"
 GITEA_PASSWORD="tutorial-password"
 GITEA_REPO="streamshub-gitops"
@@ -11,6 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 info()  { echo -e "\033[1;34m[INFO]\033[0m  $*"; }
 warn()  { echo -e "\033[1;33m[WARN]\033[0m  $*"; }
 error() { echo -e "\033[1;31m[ERROR]\033[0m $*" >&2; }
+b64decode() { echo "$1" | base64 -d 2>/dev/null || echo "$1" | base64 -D 2>/dev/null; }
 
 cleanup() {
   if [[ -n "${WORK_DIR:-}" ]]; then
@@ -50,8 +51,8 @@ info "Cluster is ready."
 # ─── Step 3: Install ArgoCD ────────────────────────────────────────────────────
 
 info "Installing ArgoCD..."
-kubectl apply -k "${SCRIPT_DIR}/../../examples/argo-cd/overlays/kubernetes" --server-side 2>/dev/null || \
-  kubectl apply -k "${SCRIPT_DIR}/../../examples/argo-cd/overlays/kubernetes" --server-side
+kubectl apply -k "${SCRIPT_DIR}/../argo-cd/overlays/kubernetes" --server-side 2>/dev/null || \
+  kubectl apply -k "${SCRIPT_DIR}/../argo-cd/overlays/kubernetes" --server-side
 
 info "Waiting for ArgoCD to be ready (this may take a few minutes)..."
 kubectl rollout status deployment/argocd-server -n argocd --timeout=300s
@@ -61,8 +62,8 @@ kubectl rollout status deployment/argocd-repo-server -n argocd --timeout=300s
 
 info "Installing Strimzi operator..."
 kubectl create namespace strimzi-operator 2>/dev/null || true
-kubectl apply -k "${SCRIPT_DIR}/../../examples/operators/strimzi/overlays/kubernetes" --server-side 2>/dev/null || \
-  kubectl apply -k "${SCRIPT_DIR}/../../examples/operators/strimzi/overlays/kubernetes" --server-side
+kubectl apply -k "${SCRIPT_DIR}/../operators/strimzi/overlays/kubernetes" --server-side 2>/dev/null || \
+  kubectl apply -k "${SCRIPT_DIR}/../operators/strimzi/overlays/kubernetes" --server-side
 
 # The upstream Strimzi YAML hardcodes 'myproject' as the ServiceAccount namespace in RoleBindings.
 # Kustomize namespace override doesn't fix subject references, so patch them manually.
@@ -160,9 +161,9 @@ else
   warn "Repository creation returned HTTP ${HTTP_CODE} (may already exist)."
 fi
 
-# ─── Step 7: Seed the Gitea repository with manifests ─────────────────────────
+# ─── Step 7: Seed the Gitea repository with base manifests ────────────────────
 
-info "Seeding Gitea repository with tutorial manifests..."
+info "Seeding Gitea repository with base manifests..."
 
 WORK_DIR=$(mktemp -d)
 trap cleanup EXIT
@@ -170,7 +171,7 @@ trap cleanup EXIT
 git clone "http://${GITEA_USER}:${GITEA_PASSWORD}@localhost:${GITEA_HOST_PORT}/${GITEA_USER}/${GITEA_REPO}.git" "${WORK_DIR}/repo" 2>/dev/null
 
 mkdir -p "${WORK_DIR}/repo/manifests"
-cp "${SCRIPT_DIR}/manifests/"* "${WORK_DIR}/repo/manifests/"
+cp "${SCRIPT_DIR}/base-manifests/"* "${WORK_DIR}/repo/manifests/"
 
 pushd "${WORK_DIR}/repo" >/dev/null
 git add .
@@ -213,14 +214,15 @@ kubectl wait kafka/my-cluster --for=condition=Ready -n kafka-tutorial --timeout=
 
 # ─── Step 10: Print instructions ───────────────────────────────────────────────
 
-ARGOCD_PASSWORD=$(kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath='{.data.password}' | base64 -d)
+ARGOCD_PASSWORD=$(b64decode "$(kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath='{.data.password}')")
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-info "Setup complete! Your lesson environment is ready."
+info "Setup complete! Your tutorial environment is ready."
 echo ""
-echo "  Open README.md and follow the lesson steps."
+echo "  Next step: run the prep script for the lesson you want to start:"
+echo "     cd ../lesson-1 && ./prep.sh"
 echo ""
 echo "  ArgoCD Dashboard (open in a separate terminal):"
 echo "     kubectl port-forward svc/argocd-server -n argocd 8080:443"
@@ -228,7 +230,7 @@ echo "     URL:      https://localhost:8080"
 echo "     Username: admin"
 echo "     Password: ${ARGOCD_PASSWORD}"
 echo ""
-echo "  Cleanup when done:"
+echo "  Cleanup when done with all lessons:"
 echo "     ./teardown.sh"
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

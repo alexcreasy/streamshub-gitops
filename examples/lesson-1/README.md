@@ -1,8 +1,8 @@
 # Lesson 1: Your First GitOps Change
 
 **Series:** GitOps with StreamsHub — 3-part series  
-**Prerequisites:** None beyond the tools listed below  
-**Time:** ~20 minutes (plus ~8 minutes for setup)
+**Prerequisites:** Complete [Getting Started](../lesson-0/README.md) first  
+**Time:** ~20 minutes (plus ~8 minutes for first-time setup)
 
 ---
 
@@ -32,6 +32,12 @@ You need the following tools installed on your machine:
 
 **System requirements:** ~4 GB of available memory for Docker.
 
+You also need the shared tutorial infrastructure running. If you haven't done this yet, run the setup script first (takes ~8 minutes, one-time):
+
+```bash
+cd ../lesson-0 && ./setup.sh
+```
+
 ---
 
 ## Background: The GitOps idea in one paragraph
@@ -42,23 +48,15 @@ In traditional operations you make changes to a running system by running comman
 
 ## Setup
 
-Run the setup script from this directory:
+Run the prep script from this directory:
 
 ```bash
-./setup.sh
+./prep.sh
 ```
 
-This takes approximately 8 minutes and creates a fully self-contained local environment:
+This takes under a minute. It resets the Gitea repository to the lesson-1 starting state and confirms that ArgoCD has synced. When it finishes it prints the Gitea and ArgoCD credentials.
 
-1. A **KinD** Kubernetes cluster running on your machine
-2. **ArgoCD** — the GitOps engine that watches Git and applies changes
-3. **Strimzi** — the operator that manages Kafka resources on Kubernetes
-4. **Gitea** — a lightweight Git server running inside the cluster, reachable at `http://localhost:3001`
-5. A Git repository in Gitea containing the initial Kafka configuration
-6. An ArgoCD `Application` configured to watch that repository
-7. A running Kafka cluster, already deployed via the GitOps workflow
-
-When the script finishes it prints the ArgoCD admin password — keep the terminal open or note it down.
+You can re-run `./prep.sh` at any time to reset back to the lesson starting state — useful if you make a mistake and want to start over without re-running the full setup.
 
 ---
 
@@ -283,10 +281,10 @@ This tells ArgoCD to poll Gitea right now. The annotation is cleared automatical
 
 ## Cleanup
 
-When you are done, delete the cluster to remove everything:
+When you are done with all lessons, delete the cluster to remove everything:
 
 ```bash
-./teardown.sh
+../lesson-0/teardown.sh
 ```
 
 This deletes the KinD cluster and all resources within it. Clean up the cloned repo too:
@@ -305,11 +303,8 @@ In **Lesson 2: Promotion from Staging to Production**, you will build on this en
 
 ## Troubleshooting
 
-**Docker is not running**
-Start Docker Desktop or your container runtime and run `./setup.sh` again.
-
-**Port 3001 is already in use**
-Another application is using port 3001 (e.g., a development server). Stop that application, or change the port in `kind-config.yaml` (update both `hostPort` and the `nodePort` in `gitea/deployment.yaml` to match).
+**Infrastructure is not running**
+If `./prep.sh` reports that the cluster or Kafka is not found, you need to run the setup script first: `../lesson-0/setup.sh`. See [Getting Started](../lesson-0/README.md) for setup troubleshooting.
 
 **Kafka cluster is not becoming ready**
 Kafka takes a few minutes to start, especially on machines with limited resources. Check pod status and events:
@@ -331,18 +326,6 @@ If Gitea is unreachable from inside the cluster, verify the Gitea pod is running
 ```bash
 kubectl get pods -n gitea
 ```
-
-**Insufficient memory**
-If pods are stuck in `Pending` or being evicted, Docker may not have enough memory. Increase Docker Desktop memory to at least 4 GB in Settings > Resources.
-
-**KinD cluster creation fails with "could not find a log line"**
-This can happen if you have other KinD clusters already running — they exhaust the Linux kernel's inotify instance limit, preventing systemd from starting inside the new node container. If you're using Colima, increase the limit temporarily:
-
-```bash
-colima ssh -- sudo sysctl -w fs.inotify.max_user_instances=512
-```
-
-Then retry `./setup.sh`. The setting resets when the Colima VM restarts.
 
 **Topic is not appearing after sync**
 Check that the `kustomization.yaml` edit was saved and committed correctly:
