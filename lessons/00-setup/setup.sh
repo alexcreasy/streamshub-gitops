@@ -7,6 +7,13 @@ GITEA_PASSWORD="tutorial-password"
 GITEA_REPO="streamshub-gitops"
 GITEA_HOST_PORT=3001
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RUNTIME="${RUNTIME:-kind}"
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --runtime) RUNTIME="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
 
 info()  { echo -e "\033[1;34m[INFO]\033[0m  $*"; }
 warn()  { echo -e "\033[1;33m[WARN]\033[0m  $*"; }
@@ -22,7 +29,16 @@ cleanup() {
 # ─── Step 1: Check prerequisites ───────────────────────────────────────────────
 
 info "Checking prerequisites..."
-for cmd in kind kubectl git curl; do
+REQUIRED_CMDS=(kubectl git curl)
+if [[ "${RUNTIME}" == "kind" ]]; then
+  REQUIRED_CMDS+=(kind)
+elif [[ "${RUNTIME}" == "minikube" ]]; then
+  REQUIRED_CMDS+=(minikube)
+else
+  error "Unknown runtime '${RUNTIME}'. Use 'kind' (default) or 'minikube'."
+  exit 1
+fi
+for cmd in "${REQUIRED_CMDS[@]}"; do
   if ! command -v "$cmd" &>/dev/null; then
     error "'$cmd' is required but not found in PATH."
     exit 1
@@ -36,16 +52,25 @@ fi
 
 info "All prerequisites satisfied."
 
-# ─── Step 2: Create KinD cluster ───────────────────────────────────────────────
+# ─── Step 2: Create cluster ────────────────────────────────────────────────────
 
-if kind get clusters 2>/dev/null | grep -q "^${CLUSTER_NAME}$"; then
-  info "KinD cluster '${CLUSTER_NAME}' already exists, skipping creation."
+if [[ "${RUNTIME}" == "kind" ]]; then
+  if kind get clusters 2>/dev/null | grep -q "^${CLUSTER_NAME}$"; then
+    info "KinD cluster '${CLUSTER_NAME}' already exists, skipping creation."
+  else
+    info "Creating KinD cluster '${CLUSTER_NAME}'..."
+    kind create cluster --name "${CLUSTER_NAME}" --config "${SCRIPT_DIR}/kind-config.yaml"
+  fi
+  kubectl cluster-info --context "kind-${CLUSTER_NAME}" >/dev/null 2>&1
 else
-  info "Creating KinD cluster '${CLUSTER_NAME}'..."
-  kind create cluster --name "${CLUSTER_NAME}" --config "${SCRIPT_DIR}/kind-config.yaml"
+  if minikube status --profile "${CLUSTER_NAME}" &>/dev/null; then
+    info "Minikube cluster '${CLUSTER_NAME}' already exists, skipping creation."
+  else
+    info "Creating Minikube cluster '${CLUSTER_NAME}'..."
+    minikube start --profile "${CLUSTER_NAME}" --memory=4096 --cpus=2 --driver=docker
+  fi
+  kubectl config use-context "${CLUSTER_NAME}" >/dev/null 2>&1
 fi
-
-kubectl cluster-info --context "kind-${CLUSTER_NAME}" >/dev/null 2>&1
 info "Cluster is ready."
 
 # ─── Step 3: Install ArgoCD ────────────────────────────────────────────────────
@@ -107,6 +132,24 @@ for i in $(seq 1 30); do
   sleep 2
 done
 
+# Compute host-accessible Gitea URL (differs between runtimes)
+if [[ "${RUNTIME}" == "kind" ]]; then
+  GITEA_URL="http://localhost:${GITEA_HOST_PORT}"
+else
+  MINIKUBE_IP=$(minikube ip --profile "${CLUSTER_NAME}")
+  GITEA_URL="http://${MINIKUBE_IP}:30003"
+  info "Patching Gitea ROOT_URL for Minikube access at ${GITEA_URL}..."
+  kubectl set env deployment/gitea -n gitea ROOT_URL="${GITEA_URL}"
+  kubectl rollout status deployment/gitea -n gitea --timeout=120s
+  GITEA_POD=$(kubectl get pods -n gitea -l app=gitea -o jsonpath='{.items[0].metadata.name}')
+  for i in $(seq 1 30); do
+    if kubectl exec -n gitea "${GITEA_POD}" -- curl -sf http://localhost:3000/api/v1/version >/dev/null 2>&1; then
+      break
+    fi
+    sleep 2
+  done
+fi
+
 # ─── Step 6: Configure Gitea ───────────────────────────────────────────────────
 
 info "Configuring Gitea user and repository..."
@@ -117,10 +160,10 @@ kubectl exec -n gitea "${GITEA_POD}" -- gitea admin user create \
   --email "tutorial@example.com" \
   --must-change-password=false 2>/dev/null || true
 
-info "Waiting for Gitea to be reachable on localhost:${GITEA_HOST_PORT}..."
+info "Waiting for Gitea to be reachable at ${GITEA_URL}..."
 GITEA_READY=false
 for i in $(seq 1 60); do
-  if curl -sf "http://localhost:${GITEA_HOST_PORT}/api/v1/version" >/dev/null 2>&1; then
+  if curl -sf "${GITEA_URL}/api/v1/version" >/dev/null 2>&1; then
     GITEA_READY=true
     break
   fi
@@ -128,13 +171,13 @@ for i in $(seq 1 60); do
 done
 
 if [[ "${GITEA_READY}" != "true" ]]; then
-  error "Gitea is not reachable on localhost:${GITEA_HOST_PORT} after 3 minutes."
+  error "Gitea is not reachable at ${GITEA_URL} after 3 minutes."
   error "Check pod status: kubectl get pods -n gitea"
   exit 1
 fi
 
 TOKEN_RESPONSE=$(curl -sf -X POST \
-  "http://localhost:${GITEA_HOST_PORT}/api/v1/users/${GITEA_USER}/tokens" \
+  "${GITEA_URL}/api/v1/users/${GITEA_USER}/tokens" \
   -u "${GITEA_USER}:${GITEA_PASSWORD}" \
   -H "Content-Type: application/json" \
   -d '{"name":"setup-token","scopes":["all"]}' 2>/dev/null || echo "{}")
@@ -148,7 +191,7 @@ if [[ -z "${TOKEN}" ]]; then
 fi
 
 HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" -X POST \
-  "http://localhost:${GITEA_HOST_PORT}/api/v1/user/repos" \
+  "${GITEA_URL}/api/v1/user/repos" \
   -H "Authorization: token ${TOKEN}" \
   -H "Content-Type: application/json" \
   -d "{\"name\":\"${GITEA_REPO}\",\"auto_init\":true,\"default_branch\":\"main\"}" 2>/dev/null || echo "000")
@@ -168,7 +211,8 @@ info "Seeding Gitea repository with base manifests..."
 WORK_DIR=$(mktemp -d)
 trap cleanup EXIT
 
-git clone "http://${GITEA_USER}:${GITEA_PASSWORD}@localhost:${GITEA_HOST_PORT}/${GITEA_USER}/${GITEA_REPO}.git" "${WORK_DIR}/repo" 2>/dev/null
+GITEA_AUTHORITY="${GITEA_URL#http://}"
+git clone "http://${GITEA_USER}:${GITEA_PASSWORD}@${GITEA_AUTHORITY}/${GITEA_USER}/${GITEA_REPO}.git" "${WORK_DIR}/repo" 2>/dev/null
 
 mkdir -p "${WORK_DIR}/repo/manifests"
 cp "${SCRIPT_DIR}/base-manifests/"* "${WORK_DIR}/repo/manifests/"
@@ -221,8 +265,15 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 info "Setup complete! Your tutorial environment is ready."
 echo ""
+echo "  Gitea (your Git server):  ${GITEA_URL}"
+echo "  Username: ${GITEA_USER}   Password: ${GITEA_PASSWORD}"
+echo ""
 echo "  Next step: run the prep script for the lesson you want to start:"
-echo "     cd ../01-lesson-1 && ./prep.sh"
+if [[ "${RUNTIME}" == "kind" ]]; then
+  echo "     cd ../01-lesson-1 && ./prep.sh"
+else
+  echo "     cd ../01-lesson-1 && ./prep.sh --runtime ${RUNTIME}"
+fi
 echo ""
 echo "  ArgoCD Dashboard (open in a separate terminal):"
 echo "     kubectl port-forward svc/argocd-server -n argocd 8080:443"
@@ -231,6 +282,10 @@ echo "     Username: admin"
 echo "     Password: ${ARGOCD_PASSWORD}"
 echo ""
 echo "  Cleanup when done with all lessons:"
-echo "     ./teardown.sh"
+if [[ "${RUNTIME}" == "kind" ]]; then
+  echo "     ./teardown.sh"
+else
+  echo "     ./teardown.sh --runtime ${RUNTIME}"
+fi
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

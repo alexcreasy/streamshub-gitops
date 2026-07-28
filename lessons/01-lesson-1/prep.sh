@@ -7,6 +7,13 @@ GITEA_PASSWORD="tutorial-password"
 GITEA_REPO="streamshub-gitops"
 GITEA_HOST_PORT=3001
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RUNTIME="${RUNTIME:-kind}"
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --runtime) RUNTIME="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
 
 info()  { echo -e "\033[1;34m[INFO]\033[0m  $*"; }
 warn()  { echo -e "\033[1;33m[WARN]\033[0m  $*"; }
@@ -23,9 +30,20 @@ cleanup() {
 
 info "Validating tutorial infrastructure..."
 
-if ! kind get clusters 2>/dev/null | grep -q "^${CLUSTER_NAME}$"; then
-  error "KinD cluster '${CLUSTER_NAME}' is not running."
-  error "Please run the setup script first: ../00-setup/setup.sh"
+if [[ "${RUNTIME}" == "kind" ]]; then
+  if ! kind get clusters 2>/dev/null | grep -q "^${CLUSTER_NAME}$"; then
+    error "KinD cluster '${CLUSTER_NAME}' is not running."
+    error "Please run the setup script first: ../00-setup/setup.sh"
+    exit 1
+  fi
+elif [[ "${RUNTIME}" == "minikube" ]]; then
+  if ! minikube status --profile "${CLUSTER_NAME}" &>/dev/null; then
+    error "Minikube cluster '${CLUSTER_NAME}' is not running."
+    error "Please run the setup script first: ../00-setup/setup.sh --runtime minikube"
+    exit 1
+  fi
+else
+  error "Unknown runtime '${RUNTIME}'. Use 'kind' (default) or 'minikube'."
   exit 1
 fi
 
@@ -35,9 +53,20 @@ if ! kubectl get kafka my-cluster -n kafka-tutorial &>/dev/null; then
   exit 1
 fi
 
-if ! curl -sf "http://localhost:${GITEA_HOST_PORT}/api/v1/version" >/dev/null 2>&1; then
-  error "Gitea is not reachable on localhost:${GITEA_HOST_PORT}."
-  error "Please run the setup script first: ../00-setup/setup.sh"
+if [[ "${RUNTIME}" == "kind" ]]; then
+  GITEA_URL="http://localhost:${GITEA_HOST_PORT}"
+else
+  MINIKUBE_IP=$(minikube ip --profile "${CLUSTER_NAME}")
+  GITEA_URL="http://${MINIKUBE_IP}:30003"
+fi
+
+if ! curl -sf "${GITEA_URL}/api/v1/version" >/dev/null 2>&1; then
+  error "Gitea is not reachable at ${GITEA_URL}."
+  if [[ "${RUNTIME}" == "kind" ]]; then
+    error "Please run the setup script first: ../00-setup/setup.sh"
+  else
+    error "Please run the setup script first: ../00-setup/setup.sh --runtime ${RUNTIME}"
+  fi
   exit 1
 fi
 
@@ -50,7 +79,8 @@ info "Resetting Gitea repository to lesson-1 starting state..."
 WORK_DIR=$(mktemp -d)
 trap cleanup EXIT
 
-git clone "http://${GITEA_USER}:${GITEA_PASSWORD}@localhost:${GITEA_HOST_PORT}/${GITEA_USER}/${GITEA_REPO}.git" "${WORK_DIR}/repo" 2>/dev/null
+GITEA_AUTHORITY="${GITEA_URL#http://}"
+git clone "http://${GITEA_USER}:${GITEA_PASSWORD}@${GITEA_AUTHORITY}/${GITEA_USER}/${GITEA_REPO}.git" "${WORK_DIR}/repo" 2>/dev/null
 
 rm -rf "${WORK_DIR}/repo/manifests"
 mkdir -p "${WORK_DIR}/repo/manifests"
@@ -101,7 +131,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 info "Lesson 1 is ready. Open README.md and follow the lesson steps."
 echo ""
-echo "  Gitea (your Git server):  http://localhost:${GITEA_HOST_PORT}"
+echo "  Gitea (your Git server):  ${GITEA_URL}"
 echo "  Username: ${GITEA_USER}   Password: ${GITEA_PASSWORD}"
 echo ""
 echo "  ArgoCD Dashboard (open in a separate terminal):"

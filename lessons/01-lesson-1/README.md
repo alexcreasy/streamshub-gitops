@@ -25,7 +25,8 @@ You need the following tools installed on your machine:
 | Tool | Purpose | Install |
 |------|---------|---------|
 | **Docker** | Container runtime | [docker.com](https://www.docker.com/products/docker-desktop/) |
-| **KinD** (v0.20+) | Local Kubernetes clusters | `brew install kind` or [kind.sigs.k8s.io](https://kind.sigs.k8s.io/docs/user/quick-start/#installation) |
+| **KinD** (v0.20+) | Local Kubernetes clusters (default) | `brew install kind` or [kind.sigs.k8s.io](https://kind.sigs.k8s.io/docs/user/quick-start/#installation) |
+| **Minikube** | Alternative to KinD | `brew install minikube` or [minikube.sigs.k8s.io](https://minikube.sigs.k8s.io/docs/start/) |
 | **kubectl** | Kubernetes CLI | `brew install kubectl` or [kubernetes.io](https://kubernetes.io/docs/tasks/tools/) |
 | **git** | Version control | `brew install git` or [git-scm.com](https://git-scm.com/) |
 | **curl** | HTTP requests | Usually pre-installed |
@@ -48,13 +49,17 @@ In traditional operations you make changes to a running system by running comman
 
 ## Setup
 
-Run the prep script from this directory:
+Run the prep script from this directory. Pass `--runtime minikube` if that is what you used during setup, otherwise no flag is needed:
 
 ```bash
+# KinD (default)
 ./prep.sh
+
+# Minikube
+./prep.sh --runtime minikube
 ```
 
-This takes under a minute. It resets the Gitea repository to the lesson-1 starting state and confirms that ArgoCD has synced. When it finishes it prints the Gitea and ArgoCD credentials.
+This takes under a minute. It resets the Gitea repository to the lesson-1 starting state and confirms that ArgoCD has synced. When it finishes it prints the Gitea URL and ArgoCD credentials for your runtime.
 
 You can re-run `./prep.sh` at any time to reset back to the lesson starting state — useful if you make a mistake and want to start over without re-running the full setup.
 
@@ -66,10 +71,15 @@ Before you make any changes, take a moment to explore the environment. This is w
 
 ### Clone the repository
 
-The Gitea server is running inside the cluster and is exposed on port 3001. Clone the repository it holds:
+The Gitea server is running inside the cluster. Clone the repository it holds using the URL that `prep.sh` printed (shown as "Gitea (your Git server)"):
 
 ```bash
+# KinD (default)
 git clone http://tutorial-user:tutorial-password@localhost:3001/tutorial-user/streamshub-gitops.git /tmp/gitops-lesson-1
+
+# Minikube — replace <minikube-ip> with the IP printed by prep.sh
+git clone http://tutorial-user:tutorial-password@<minikube-ip>:30003/tutorial-user/streamshub-gitops.git /tmp/gitops-lesson-1
+
 cd /tmp/gitops-lesson-1
 ```
 
@@ -284,10 +294,14 @@ This tells ArgoCD to poll Gitea right now. The annotation is cleared automatical
 When you are done with all lessons, delete the cluster to remove everything:
 
 ```bash
+# KinD (default)
 ../00-setup/teardown.sh
+
+# Minikube
+../00-setup/teardown.sh --runtime minikube
 ```
 
-This deletes the KinD cluster and all resources within it. Clean up the cloned repo too:
+This deletes the cluster and all resources within it. Clean up the cloned repo too:
 
 ```bash
 rm -rf /tmp/gitops-lesson-1
