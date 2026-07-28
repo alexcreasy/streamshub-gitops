@@ -10,6 +10,10 @@ Documentation, including overviews and tutorials can be found in the `docs` fold
 - See the main StreamsHub site's [README](https://github.com/streamshub/streamshub-site?tab=readme-ov-file#pulling-dependant-sources) for more details on the docs generation process.
 - See the Flink SQL Examples [docs](https://github.com/streamshub/flink-sql-examples/tree/main/docs) for an example of how documentation can be laid out.
 
+## Tutorials
+
+Hands-on GitOps tutorials can be found under the [lessons](./lessons) folder. Start with [lessons/00-setup](./lessons/00-setup) to spin up the shared local environment, then follow each numbered lesson.
+
 ## Example Code
 
-Example code can be found under the [examples](./examples) folder.
+Production-oriented example code can be found under the [examples](./examples) folder.

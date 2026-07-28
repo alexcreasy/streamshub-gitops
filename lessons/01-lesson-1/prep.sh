@@ -25,19 +25,19 @@ info "Validating tutorial infrastructure..."
 
 if ! kind get clusters 2>/dev/null | grep -q "^${CLUSTER_NAME}$"; then
   error "KinD cluster '${CLUSTER_NAME}' is not running."
-  error "Please run the setup script first: ../lesson-0/setup.sh"
+  error "Please run the setup script first: ../00-setup/setup.sh"
   exit 1
 fi
 
 if ! kubectl get kafka my-cluster -n kafka-tutorial &>/dev/null; then
   error "Kafka cluster 'my-cluster' not found in namespace 'kafka-tutorial'."
-  error "Please run the setup script first: ../lesson-0/setup.sh"
+  error "Please run the setup script first: ../00-setup/setup.sh"
   exit 1
 fi
 
 if ! curl -sf "http://localhost:${GITEA_HOST_PORT}/api/v1/version" >/dev/null 2>&1; then
   error "Gitea is not reachable on localhost:${GITEA_HOST_PORT}."
-  error "Please run the setup script first: ../lesson-0/setup.sh"
+  error "Please run the setup script first: ../00-setup/setup.sh"
   exit 1
 fi
 

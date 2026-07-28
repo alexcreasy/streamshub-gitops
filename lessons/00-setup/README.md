@@ -45,7 +45,7 @@ When the script finishes, it prints the ArgoCD admin password and tells you whic
 After setup completes, run the prep script for the lesson you want:
 
 ```bash
-cd ../lesson-1 && ./prep.sh
+cd ../01-lesson-1 && ./prep.sh
 ```
 
 Each `prep.sh` resets the Gitea repository to that lesson's starting state and takes under a minute. You can switch between lessons, or re-run `prep.sh` to reset after making mistakes — without re-running `setup.sh`.

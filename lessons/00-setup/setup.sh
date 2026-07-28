@@ -51,8 +51,8 @@ info "Cluster is ready."
 # ─── Step 3: Install ArgoCD ────────────────────────────────────────────────────
 
 info "Installing ArgoCD..."
-kubectl apply -k "${SCRIPT_DIR}/../argo-cd/overlays/kubernetes" --server-side 2>/dev/null || \
-  kubectl apply -k "${SCRIPT_DIR}/../argo-cd/overlays/kubernetes" --server-side
+kubectl apply -k "${SCRIPT_DIR}/../../examples/argo-cd/overlays/kubernetes" --server-side 2>/dev/null || \
+  kubectl apply -k "${SCRIPT_DIR}/../../examples/argo-cd/overlays/kubernetes" --server-side
 
 info "Waiting for ArgoCD to be ready (this may take a few minutes)..."
 kubectl rollout status deployment/argocd-server -n argocd --timeout=300s
@@ -62,8 +62,8 @@ kubectl rollout status deployment/argocd-repo-server -n argocd --timeout=300s
 
 info "Installing Strimzi operator..."
 kubectl create namespace strimzi-operator 2>/dev/null || true
-kubectl apply -k "${SCRIPT_DIR}/../operators/strimzi/overlays/kubernetes" --server-side 2>/dev/null || \
-  kubectl apply -k "${SCRIPT_DIR}/../operators/strimzi/overlays/kubernetes" --server-side
+kubectl apply -k "${SCRIPT_DIR}/../../examples/operators/strimzi/overlays/kubernetes" --server-side 2>/dev/null || \
+  kubectl apply -k "${SCRIPT_DIR}/../../examples/operators/strimzi/overlays/kubernetes" --server-side
 
 # The upstream Strimzi YAML hardcodes 'myproject' as the ServiceAccount namespace in RoleBindings.
 # Kustomize namespace override doesn't fix subject references, so patch them manually.
@@ -222,7 +222,7 @@ echo ""
 info "Setup complete! Your tutorial environment is ready."
 echo ""
 echo "  Next step: run the prep script for the lesson you want to start:"
-echo "     cd ../lesson-1 && ./prep.sh"
+echo "     cd ../01-lesson-1 && ./prep.sh"
 echo ""
 echo "  ArgoCD Dashboard (open in a separate terminal):"
 echo "     kubectl port-forward svc/argocd-server -n argocd 8080:443"

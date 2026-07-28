@@ -1,7 +1,7 @@
 # Lesson 1: Your First GitOps Change
 
 **Series:** GitOps with StreamsHub — 3-part series  
-**Prerequisites:** Complete [Getting Started](../lesson-0/README.md) first  
+**Prerequisites:** Complete [Getting Started](../00-setup/README.md) first  
 **Time:** ~20 minutes (plus ~8 minutes for first-time setup)
 
 ---
@@ -284,7 +284,7 @@ This tells ArgoCD to poll Gitea right now. The annotation is cleared automatical
 When you are done with all lessons, delete the cluster to remove everything:
 
 ```bash
-../lesson-0/teardown.sh
+../00-setup/teardown.sh
 ```
 
 This deletes the KinD cluster and all resources within it. Clean up the cloned repo too:
@@ -304,7 +304,7 @@ In **Lesson 2: Promotion from Staging to Production**, you will build on this en
 ## Troubleshooting
 
 **Infrastructure is not running**
-If `./prep.sh` reports that the cluster or Kafka is not found, you need to run the setup script first: `../lesson-0/setup.sh`. See [Getting Started](../lesson-0/README.md) for setup troubleshooting.
+If `./prep.sh` reports that the cluster or Kafka is not found, you need to run the setup script first: `../00-setup/setup.sh`. See [Getting Started](../00-setup/README.md) for setup troubleshooting.
 
 **Kafka cluster is not becoming ready**
 Kafka takes a few minutes to start, especially on machines with limited resources. Check pod status and events:
