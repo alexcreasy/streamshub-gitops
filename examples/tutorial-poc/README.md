@@ -1,6 +1,7 @@
 # GitOps Tutorial: Your First GitOps Deployment
 
-This tutorial walks you through the core GitOps workflow: making a change in Git and watching it automatically deploy to a Kubernetes cluster. Everything runs locally on your machine — no cloud account required.
+This tutorial walks you through the core GitOps workflow: making a change in Git and watching it automatically deploy to a Kubernetes cluster. 
+Everything runs locally on your machine — no cloud account required.
 
 By the end, you will have:
 - A local Kubernetes cluster running Apache Kafka (managed by Strimzi)
@@ -14,7 +15,7 @@ You need the following tools installed:
 | Tool | Purpose | Install |
 |------|---------|---------|
 | **Docker** | Container runtime for KinD | [docker.com](https://www.docker.com/products/docker-desktop/) |
-| **KinD** (v0.20+) | Local Kubernetes clusters | `brew install kind` or [kind.sigs.k8s.io](https://kind.sigs.k8s.io/docs/user/quick-start/#installation) |
+| **KinD** (v0.20+) or **Minikube** | Local Kubernetes clusters | `brew install kind` or `brew install minikube` |
 | **kubectl** | Kubernetes CLI | `brew install kubectl` or [kubernetes.io](https://kubernetes.io/docs/tasks/tools/) |
 | **git** | Version control | `brew install git` or [git-scm.com](https://git-scm.com/) |
 | **curl** | HTTP requests | Usually pre-installed |
@@ -29,9 +30,17 @@ Run the setup script from this directory:
 ./setup.sh
 ```
 
+The script auto-detects whether `kind` or `minikube` is installed. If both are present, it defaults to `kind`. To choose explicitly:
+
+```bash
+CLUSTER_PROVIDER=minikube ./setup.sh
+```
+
+> **Minikube users**: Start your cluster before running the setup script (`minikube start`). The script installs into your existing cluster rather than creating a new one.
+
 This takes approximately 5-8 minutes and will:
 
-1. Create a local KinD Kubernetes cluster
+1. Create a local Kubernetes cluster (KinD) or use an existing one (Minikube)
 2. Install **ArgoCD** (GitOps continuous delivery tool)
 3. Install the **Strimzi operator** (manages Kafka on Kubernetes)
 4. Install **Gitea** (a lightweight Git server running inside the cluster)
@@ -54,7 +63,8 @@ cd /tmp/gitops-tutorial
 
 ### Step 2: Explore the current deployment
 
-Look at what ArgoCD has deployed. You should see a running Kafka cluster:
+Look at what ArgoCD has deployed. 
+You should see a running Kafka cluster:
 
 ```bash
 kubectl get kafka -n kafka-tutorial
@@ -78,7 +88,8 @@ Now look at the manifests in the repository:
 ls manifests/
 ```
 
-You will see `namespace.yaml`, `combined-pool.yaml`, `kafka.yaml`, `topic.yaml`, and `kustomization.yaml`. Notice that `topic.yaml` defines a Kafka topic, but if you look at `kustomization.yaml`, it is **not listed** in the resources:
+You will see `namespace.yaml`, `combined-pool.yaml`, `kafka.yaml`, `topic.yaml`, and `kustomization.yaml`. 
+Notice that `topic.yaml` defines a Kafka topic, but if you look at `kustomization.yaml`, it is **not listed** in the resources:
 
 ```bash
 cat manifests/kustomization.yaml
@@ -178,13 +189,13 @@ Log in with username `admin` and the password above. Click on the `kafka-tutoria
 
 ## Cleanup
 
-When you are done, delete the KinD cluster to remove everything:
+When you are done, run the teardown script:
 
 ```bash
 ./teardown.sh
 ```
 
-This deletes the entire cluster and all resources within it. You can also clean up the cloned repo:
+On KinD this deletes the entire cluster. On Minikube it removes the tutorial namespaces (`argocd`, `strimzi-operator`, `kafka-tutorial`, `gitea`) but leaves your cluster running. You can also clean up the cloned repo:
 
 ```bash
 rm -rf /tmp/gitops-tutorial
@@ -196,7 +207,7 @@ rm -rf /tmp/gitops-tutorial
 The setup script requires Docker. Start Docker Desktop or your container runtime and try again.
 
 **Port 3000 is already in use**
-Another application is using port 3000 (e.g., Grafana, a development server). Stop that application or change the port in `kind-config.yaml` (update both `hostPort` and the `nodePort` in `gitea/deployment.yaml` to match).
+Another application is using port 3000 (e.g., Grafana, a development server). Stop that application before running the setup script. On KinD, the port mapping is configured in `kind-config.yaml`; on Minikube, the setup script uses `kubectl port-forward` on port 3000.
 
 **Kafka cluster is not becoming ready**
 Kafka requires time to start, especially on machines with limited resources. Check pod status:
