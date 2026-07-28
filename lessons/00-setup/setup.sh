@@ -24,7 +24,11 @@ cleanup() {
   if [[ -n "${WORK_DIR:-}" ]]; then
     rm -rf "${WORK_DIR}"
   fi
+  if [[ -n "${GITEA_PF_PID:-}" ]]; then
+    kill "${GITEA_PF_PID}" 2>/dev/null || true
+  fi
 }
+trap cleanup EXIT
 
 # ─── Step 1: Check prerequisites ───────────────────────────────────────────────
 
@@ -67,7 +71,7 @@ else
     info "Minikube cluster '${CLUSTER_NAME}' already exists, skipping creation."
   else
     info "Creating Minikube cluster '${CLUSTER_NAME}'..."
-    minikube start --profile "${CLUSTER_NAME}" --memory=4096 --cpus=2 --driver=docker
+    minikube start --profile "${CLUSTER_NAME}" --memory=4096 --cpus=2
   fi
   kubectl config use-context "${CLUSTER_NAME}" >/dev/null 2>&1
 fi
@@ -132,22 +136,34 @@ for i in $(seq 1 30); do
   sleep 2
 done
 
-# Compute host-accessible Gitea URL (differs between runtimes)
-if [[ "${RUNTIME}" == "kind" ]]; then
-  GITEA_URL="http://localhost:${GITEA_HOST_PORT}"
-else
-  MINIKUBE_IP=$(minikube ip --profile "${CLUSTER_NAME}")
-  GITEA_URL="http://${MINIKUBE_IP}:30003"
-  info "Patching Gitea ROOT_URL for Minikube access at ${GITEA_URL}..."
+# Compute host-accessible Gitea URL.
+# For KinD, kind-config.yaml maps NodePort 30003 → hostPort 3001 automatically.
+# For Minikube, the node IP is not reachable from the Mac host when using the Docker driver,
+# so we use kubectl port-forward to expose Gitea on a predictable localhost port instead.
+GITEA_URL="http://localhost:${GITEA_HOST_PORT}"
+if [[ "${RUNTIME}" != "kind" ]]; then
+  info "Patching Gitea ROOT_URL to ${GITEA_URL}..."
   kubectl set env deployment/gitea -n gitea ROOT_URL="${GITEA_URL}"
   kubectl rollout status deployment/gitea -n gitea --timeout=120s
-  GITEA_POD=$(kubectl get pods -n gitea -l app=gitea -o jsonpath='{.items[0].metadata.name}')
+  # Wait for the new (Ready) pod — rollout complete doesn't guarantee old pod has gone away yet
+  GITEA_POD=""
+  for i in $(seq 1 15); do
+    GITEA_POD=$(kubectl get pods -n gitea -l app=gitea \
+      --field-selector=status.phase=Running \
+      -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+    [[ -n "${GITEA_POD}" ]] && break
+    sleep 2
+  done
   for i in $(seq 1 30); do
     if kubectl exec -n gitea "${GITEA_POD}" -- curl -sf http://localhost:3000/api/v1/version >/dev/null 2>&1; then
       break
     fi
     sleep 2
   done
+  info "Starting port-forward: Gitea → localhost:${GITEA_HOST_PORT}..."
+  kubectl port-forward svc/gitea-http "${GITEA_HOST_PORT}:3000" -n gitea &
+  GITEA_PF_PID=$!
+  sleep 2
 fi
 
 # ─── Step 6: Configure Gitea ───────────────────────────────────────────────────
@@ -209,7 +225,6 @@ fi
 info "Seeding Gitea repository with base manifests..."
 
 WORK_DIR=$(mktemp -d)
-trap cleanup EXIT
 
 GITEA_AUTHORITY="${GITEA_URL#http://}"
 git clone "http://${GITEA_USER}:${GITEA_PASSWORD}@${GITEA_AUTHORITY}/${GITEA_USER}/${GITEA_REPO}.git" "${WORK_DIR}/repo" 2>/dev/null
@@ -267,6 +282,12 @@ info "Setup complete! Your tutorial environment is ready."
 echo ""
 echo "  Gitea (your Git server):  ${GITEA_URL}"
 echo "  Username: ${GITEA_USER}   Password: ${GITEA_PASSWORD}"
+if [[ "${RUNTIME}" != "kind" ]]; then
+  echo ""
+  echo "  Note: Gitea is exposed via kubectl port-forward (active during setup only)."
+  echo "  To access Gitea in future terminal sessions, run in a separate terminal:"
+  echo "     kubectl port-forward svc/gitea-http ${GITEA_HOST_PORT}:3000 -n gitea"
+fi
 echo ""
 echo "  Next step: run the prep script for the lesson you want to start:"
 if [[ "${RUNTIME}" == "kind" ]]; then

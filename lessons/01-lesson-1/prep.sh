@@ -24,6 +24,9 @@ cleanup() {
   if [[ -n "${WORK_DIR:-}" ]]; then
     rm -rf "${WORK_DIR}"
   fi
+  if [[ -n "${GITEA_PF_PID:-}" ]]; then
+    kill "${GITEA_PF_PID}" 2>/dev/null || true
+  fi
 }
 
 # ─── Step 1: Validate infrastructure ──────────────────────────────────────────
@@ -53,11 +56,12 @@ if ! kubectl get kafka my-cluster -n kafka-tutorial &>/dev/null; then
   exit 1
 fi
 
-if [[ "${RUNTIME}" == "kind" ]]; then
-  GITEA_URL="http://localhost:${GITEA_HOST_PORT}"
-else
-  MINIKUBE_IP=$(minikube ip --profile "${CLUSTER_NAME}")
-  GITEA_URL="http://${MINIKUBE_IP}:30003"
+GITEA_URL="http://localhost:${GITEA_HOST_PORT}"
+if [[ "${RUNTIME}" != "kind" ]]; then
+  info "Starting port-forward: Gitea → localhost:${GITEA_HOST_PORT}..."
+  kubectl port-forward svc/gitea-http "${GITEA_HOST_PORT}:3000" -n gitea &
+  GITEA_PF_PID=$!
+  sleep 2
 fi
 
 if ! curl -sf "${GITEA_URL}/api/v1/version" >/dev/null 2>&1; then
@@ -133,6 +137,11 @@ info "Lesson 1 is ready. Open README.md and follow the lesson steps."
 echo ""
 echo "  Gitea (your Git server):  ${GITEA_URL}"
 echo "  Username: ${GITEA_USER}   Password: ${GITEA_PASSWORD}"
+if [[ "${RUNTIME}" != "kind" ]]; then
+  echo ""
+  echo "  Note: to push git changes during the lesson, keep a port-forward running:"
+  echo "     kubectl port-forward svc/gitea-http ${GITEA_HOST_PORT}:3000 -n gitea"
+fi
 echo ""
 echo "  ArgoCD Dashboard (open in a separate terminal):"
 echo "     kubectl port-forward svc/argocd-server -n argocd 8080:443"

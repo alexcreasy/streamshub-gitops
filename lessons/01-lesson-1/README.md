@@ -71,17 +71,17 @@ Before you make any changes, take a moment to explore the environment. This is w
 
 ### Clone the repository
 
-The Gitea server is running inside the cluster. Clone the repository it holds using the URL that `prep.sh` printed (shown as "Gitea (your Git server)"):
+The Gitea server is running inside the cluster and is exposed on port 3001. Clone the repository it holds:
 
 ```bash
-# KinD (default)
 git clone http://tutorial-user:tutorial-password@localhost:3001/tutorial-user/streamshub-gitops.git /tmp/gitops-lesson-1
-
-# Minikube — replace <minikube-ip> with the IP printed by prep.sh
-git clone http://tutorial-user:tutorial-password@<minikube-ip>:30003/tutorial-user/streamshub-gitops.git /tmp/gitops-lesson-1
-
 cd /tmp/gitops-lesson-1
 ```
+
+> **Minikube users:** Gitea is exposed via `kubectl port-forward`. Keep the following running in a separate terminal before performing any `git push` steps:
+> ```bash
+> kubectl port-forward svc/gitea-http 3001:3000 -n gitea
+> ```
 
 This is the repository ArgoCD is watching. Any change you push here will be picked up and applied to the cluster.
 

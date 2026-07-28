@@ -27,7 +27,7 @@ KinD and Minikube both run a local Kubernetes cluster inside Docker. KinD is sim
 
 | | KinD (default) | Minikube |
 |---|---|---|
-| Gitea URL | `http://localhost:3001` | `http://<minikube-ip>:30003` |
+| Gitea URL | `http://localhost:3001` | `http://localhost:3001` (via kubectl port-forward) |
 | Setup flag | _(none)_ | `--runtime minikube` |
 
 ## Setup
