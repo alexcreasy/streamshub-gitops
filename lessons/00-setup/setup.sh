@@ -138,28 +138,11 @@ done
 
 # Compute host-accessible Gitea URL.
 # For KinD, kind-config.yaml maps NodePort 30003 → hostPort 3001 automatically.
-# For Minikube, the node IP is not reachable from the Mac host when using the Docker driver,
-# so we use kubectl port-forward to expose Gitea on a predictable localhost port instead.
+# For Minikube, the node IP is not reliably reachable from the host (Docker driver on Mac),
+# so we use kubectl port-forward instead. gitea/deployment.yaml already sets ROOT_URL to
+# localhost:3001, so no patching is needed — just start the port-forward.
 GITEA_URL="http://localhost:${GITEA_HOST_PORT}"
 if [[ "${RUNTIME}" != "kind" ]]; then
-  info "Patching Gitea ROOT_URL to ${GITEA_URL}..."
-  kubectl set env deployment/gitea -n gitea ROOT_URL="${GITEA_URL}"
-  kubectl rollout status deployment/gitea -n gitea --timeout=120s
-  # Wait for the new (Ready) pod — rollout complete doesn't guarantee old pod has gone away yet
-  GITEA_POD=""
-  for i in $(seq 1 15); do
-    GITEA_POD=$(kubectl get pods -n gitea -l app=gitea \
-      --field-selector=status.phase=Running \
-      -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
-    [[ -n "${GITEA_POD}" ]] && break
-    sleep 2
-  done
-  for i in $(seq 1 30); do
-    if kubectl exec -n gitea "${GITEA_POD}" -- curl -sf http://localhost:3000/api/v1/version >/dev/null 2>&1; then
-      break
-    fi
-    sleep 2
-  done
   info "Starting port-forward: Gitea → localhost:${GITEA_HOST_PORT}..."
   kubectl port-forward svc/gitea-http "${GITEA_HOST_PORT}:3000" -n gitea &
   GITEA_PF_PID=$!
@@ -198,8 +181,8 @@ TOKEN_RESPONSE=$(curl -sf -X POST \
   -H "Content-Type: application/json" \
   -d '{"name":"setup-token","scopes":["all"]}' 2>/dev/null || echo "{}")
 
-TOKEN=$(echo "${TOKEN_RESPONSE}" | grep -o '"sha1":"[^"]*"' | cut -d'"' -f4)
-[[ -z "${TOKEN}" ]] && TOKEN=$(echo "${TOKEN_RESPONSE}" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+TOKEN=$(echo "${TOKEN_RESPONSE}" | grep -o '"sha1":"[^"]*"' | cut -d'"' -f4 || true)
+[[ -z "${TOKEN}" ]] && TOKEN=$(echo "${TOKEN_RESPONSE}" | grep -o '"token":"[^"]*"' | cut -d'"' -f4 || true)
 
 if [[ -z "${TOKEN}" ]]; then
   error "Failed to create Gitea access token. Response: ${TOKEN_RESPONSE}"
