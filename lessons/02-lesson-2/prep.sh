@@ -53,18 +53,16 @@ kubectl delete application kafka-tutorial -n argocd --ignore-not-found 2>/dev/nu
 # Also remove any lesson-2 Applications from a previous run of this script.
 kubectl delete application kafka-staging kafka-production -n argocd --ignore-not-found 2>/dev/null || true
 
-# Patch away Strimzi finalizers so the namespace deletion doesn't hang.
-for cr_type in kafka kafkanodepool kafkatopic; do
-  if kubectl get "${cr_type}" -n kafka-tutorial &>/dev/null 2>&1; then
-    kubectl get "${cr_type}" -n kafka-tutorial -o name 2>/dev/null | \
-      xargs -r -I{} kubectl patch {} -n kafka-tutorial \
+# Patch away Strimzi finalizers in all tutorial namespaces so deletions don't hang.
+for ns in kafka-tutorial kafka-staging kafka-production; do
+  for cr_type in kafka kafkanodepool kafkatopic; do
+    kubectl get "${cr_type}" -n "${ns}" -o name 2>/dev/null | \
+      xargs -r -I{} kubectl patch {} -n "${ns}" \
         --type=merge -p '{"metadata":{"finalizers":null}}' 2>/dev/null || true
-  fi
+  done
 done
 
-kubectl delete namespace kafka-tutorial --ignore-not-found
-kubectl delete namespace kafka-staging --ignore-not-found
-kubectl delete namespace kafka-production --ignore-not-found
+kubectl delete namespace kafka-tutorial kafka-staging kafka-production --ignore-not-found
 
 info "Previous lesson state cleaned up."
 
