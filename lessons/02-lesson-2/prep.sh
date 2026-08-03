@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CLUSTER_NAME="gitops-tutorial"
-GITEA_USER="tutorial-user"
-GITEA_PASSWORD="tutorial-password"
-GITEA_REPO="streamshub-gitops"
-GITEA_HOST_PORT=3001
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../00-setup/common.sh
+source "${SCRIPT_DIR}/../00-setup/common.sh"
+
+KAFKA_STAGING_NAMESPACE="kafka-staging"
+KAFKA_PRODUCTION_NAMESPACE="kafka-production"
 
 info()  { echo -e "\033[1;34m[INFO]\033[0m  $*"; }
 warn()  { echo -e "\033[1;33m[WARN]\033[0m  $*"; }
@@ -35,7 +35,7 @@ if ! kubectl get deployment strimzi-cluster-operator -n strimzi-operator &>/dev/
   exit 1
 fi
 
-if ! curl -sf "http://localhost:${GITEA_HOST_PORT}/api/v1/version" >/dev/null 2>&1; then
+if ! curl -sf "${GITEA_URL}/api/v1/version" >/dev/null 2>&1; then
   error "Gitea is not reachable on localhost:${GITEA_HOST_PORT}."
   error "Please run the setup script first: ../00-setup/setup.sh"
   exit 1
@@ -48,13 +48,13 @@ info "Infrastructure checks passed."
 info "Cleaning up previous lesson state..."
 
 # Remove the lesson-1 ArgoCD Application (no cascade finalizer, so this is instant).
-kubectl delete application kafka-tutorial -n argocd --ignore-not-found 2>/dev/null || true
+kubectl delete application "${KAFKA_NAMESPACE}" -n argocd --ignore-not-found 2>/dev/null || true
 
 # Also remove any lesson-2 Applications from a previous run of this script.
-kubectl delete application kafka-staging kafka-production -n argocd --ignore-not-found 2>/dev/null || true
+kubectl delete application "${KAFKA_STAGING_NAMESPACE}" "${KAFKA_PRODUCTION_NAMESPACE}" -n argocd --ignore-not-found 2>/dev/null || true
 
 # Patch away Strimzi finalizers in all tutorial namespaces so deletions don't hang.
-for ns in kafka-tutorial kafka-staging kafka-production; do
+for ns in "${KAFKA_NAMESPACE}" "${KAFKA_STAGING_NAMESPACE}" "${KAFKA_PRODUCTION_NAMESPACE}"; do
   for cr_type in kafka kafkanodepool kafkatopic; do
     kubectl get "${cr_type}" -n "${ns}" -o name 2>/dev/null | \
       xargs -r -I{} kubectl patch {} -n "${ns}" \
@@ -62,7 +62,7 @@ for ns in kafka-tutorial kafka-staging kafka-production; do
   done
 done
 
-kubectl delete namespace kafka-tutorial kafka-staging kafka-production --ignore-not-found
+kubectl delete namespace "${KAFKA_NAMESPACE}" "${KAFKA_STAGING_NAMESPACE}" "${KAFKA_PRODUCTION_NAMESPACE}" --ignore-not-found
 
 info "Previous lesson state cleaned up."
 
@@ -70,7 +70,7 @@ info "Previous lesson state cleaned up."
 
 info "Configuring Strimzi operator for staging and production namespaces..."
 
-for ns in kafka-staging kafka-production; do
+for ns in "${KAFKA_STAGING_NAMESPACE}" "${KAFKA_PRODUCTION_NAMESPACE}"; do
   kubectl create namespace "${ns}" 2>/dev/null || true
   for rb_name in strimzi-cluster-operator strimzi-cluster-operator-entity-operator-delegation strimzi-cluster-operator-watched; do
     ROLE_REF=$(kubectl get rolebinding "${rb_name}" -n strimzi-operator -o jsonpath='{.roleRef.name}' 2>/dev/null || echo "")
@@ -84,7 +84,7 @@ for ns in kafka-staging kafka-production; do
 done
 
 kubectl set env deployment/strimzi-cluster-operator -n strimzi-operator \
-  STRIMZI_NAMESPACE='kafka-staging,kafka-production'
+  STRIMZI_NAMESPACE="${KAFKA_STAGING_NAMESPACE},${KAFKA_PRODUCTION_NAMESPACE}"
 
 info "Waiting for Strimzi operator to restart..."
 kubectl rollout status deployment/strimzi-cluster-operator -n strimzi-operator --timeout=120s
@@ -122,17 +122,17 @@ kubectl apply -f - <<EOF
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: kafka-staging
+  name: ${KAFKA_STAGING_NAMESPACE}
   namespace: argocd
 spec:
   project: default
   source:
-    repoURL: http://gitea-http.gitea.svc:3000/tutorial-user/streamshub-gitops.git
+    repoURL: http://gitea-http.gitea.svc:3000/${GITEA_USER}/${GITEA_REPO}.git
     targetRevision: main
     path: manifests/overlays/staging
   destination:
     server: https://kubernetes.default.svc
-    namespace: kafka-staging
+    namespace: ${KAFKA_STAGING_NAMESPACE}
   syncPolicy:
     automated:
       prune: true
@@ -148,17 +148,17 @@ kubectl apply -f - <<EOF
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: kafka-production
+  name: ${KAFKA_PRODUCTION_NAMESPACE}
   namespace: argocd
 spec:
   project: default
   source:
-    repoURL: http://gitea-http.gitea.svc:3000/tutorial-user/streamshub-gitops.git
+    repoURL: http://gitea-http.gitea.svc:3000/${GITEA_USER}/${GITEA_REPO}.git
     targetRevision: main
     path: manifests/overlays/production
   destination:
     server: https://kubernetes.default.svc
-    namespace: kafka-production
+    namespace: ${KAFKA_PRODUCTION_NAMESPACE}
   syncPolicy:
     automated:
       prune: true
@@ -174,10 +174,10 @@ EOF
 
 info "Waiting for ArgoCD to sync both applications..."
 
-kubectl annotate application kafka-staging -n argocd argocd.argoproj.io/refresh=normal --overwrite >/dev/null 2>&1 || true
-kubectl annotate application kafka-production -n argocd argocd.argoproj.io/refresh=normal --overwrite >/dev/null 2>&1 || true
+kubectl annotate application "${KAFKA_STAGING_NAMESPACE}" -n argocd argocd.argoproj.io/refresh=normal --overwrite >/dev/null 2>&1 || true
+kubectl annotate application "${KAFKA_PRODUCTION_NAMESPACE}" -n argocd argocd.argoproj.io/refresh=normal --overwrite >/dev/null 2>&1 || true
 
-for app in kafka-staging kafka-production; do
+for app in "${KAFKA_STAGING_NAMESPACE}" "${KAFKA_PRODUCTION_NAMESPACE}"; do
   SYNC_STATUS="Unknown"
   for i in $(seq 1 24); do
     CURRENT_REVISION=$(kubectl get application "${app}" -n argocd -o jsonpath='{.status.sync.revision}' 2>/dev/null || echo "")
@@ -197,8 +197,8 @@ for app in kafka-staging kafka-production; do
 done
 
 info "Waiting for Kafka clusters to be ready (this may take a few minutes)..."
-kubectl wait kafka/my-cluster --for=condition=Ready -n kafka-staging --timeout=600s 2>/dev/null &
-kubectl wait kafka/my-cluster --for=condition=Ready -n kafka-production --timeout=600s 2>/dev/null &
+kubectl wait "kafka/${KAFKA_CLUSTER_NAME}" --for=condition=Ready -n "${KAFKA_STAGING_NAMESPACE}" --timeout=600s 2>/dev/null &
+kubectl wait "kafka/${KAFKA_CLUSTER_NAME}" --for=condition=Ready -n "${KAFKA_PRODUCTION_NAMESPACE}" --timeout=600s 2>/dev/null &
 wait
 
 # ─── Step 7: Print starting instructions ──────────────────────────────────────
@@ -213,7 +213,7 @@ echo ""
 echo "  Clone the repo to follow along:"
 echo "     git clone http://${GITEA_USER}:${GITEA_PASSWORD}@localhost:${GITEA_HOST_PORT}/${GITEA_USER}/${GITEA_REPO}.git /tmp/gitops-lesson-2"
 echo ""
-echo "  Gitea (your Git server):  http://localhost:${GITEA_HOST_PORT}"
+echo "  Gitea (your Git server):  ${GITEA_URL}"
 echo "  Username: ${GITEA_USER}   Password: ${GITEA_PASSWORD}"
 echo ""
 echo "  ArgoCD Dashboard (open in a separate terminal):"
