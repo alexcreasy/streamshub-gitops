@@ -25,11 +25,11 @@ If you haven't done this yet, run through the [Getting Started](../00-setup/READ
 
 ## Background: Why environments matter
 
-In Lesson 1 you made a single change and watched it reach the cluster automatically. In practice, organisations don't push changes directly to production — they promote changes through a chain of environments: developers push to **staging** first, validate the change, then promote to **production**.
+In Lesson 1 you made a single change in the configuration hosted in the git repository and watched it be applied to the the cluster automatically. In practice, organisations don't push changes directly to production — they promote changes through a chain of environments: developers push to **staging** first, validate the change, then promote to **production**.
 
-The key insight: promotion in a GitOps world is not a deploy command. It is a Git change. You describe what each environment should look like in Git, and ArgoCD continuously reconciles each environment to match its description. Promoting a change means updating the description for the target environment and pushing.
+The key insight: promotion from one environment to another, in a GitOps world, is not a deploy command. It is a change in a git repository. You describe what each environment should look like in the configuration in the repo and ArgoCD continuously reconciles each environment to match its description. Promoting a change means updating the description for the target environment and pushing.
 
-**Kustomize overlays** are the standard mechanism for this. You keep a shared base configuration and then have one overlay per environment that references the base and adds or patches environment-specific resources. ArgoCD points a separate Application at each overlay.
+**Kustomize overlays** are the kubernetes-native mechanism for managing configurations. You keep a shared base configuration and then have one overlay per environment that references the base and adds or patches environment-specific resources. ArgoCD points a separate Application at each overlay.
 
 ---
 
