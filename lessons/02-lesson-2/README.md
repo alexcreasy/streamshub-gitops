@@ -210,11 +210,18 @@ git commit -m "Promote my-first-topic to production"
 git push
 ```
 
-That is the promotion. You changed Git; the system will reconcile to match.
+That is the promotion. You changed the configuration in Git; the system will reconcile to match.
 
 ---
 
 ## Part 4: Watch both ArgoCD Applications
+
+Just as in lesson 1, ArgoCD polls the repository every 3 minutes by default. If you want to skip that wait, you can force an immediate refresh by running:
+
+```bash
+kubectl annotate application kafka-production -n argocd \
+  argocd.argoproj.io/refresh=normal --overwrite
+```
 
 Watch the production Application detect and apply your change:
 
@@ -222,13 +229,7 @@ Watch the production Application detect and apply your change:
 kubectl get application kafka-production -n argocd -w
 ```
 
-The `SYNC STATUS` column will move from `Synced` → `OutOfSync` → `Synced`. Press `Ctrl+C` once it settles. Meanwhile, open a second terminal and confirm staging remained untouched:
-
-```bash
-kubectl get application kafka-staging -n argocd
-```
-
-`kafka-staging` stays `Synced` throughout — you only changed the production overlay, so only the production Application was affected.
+The `SYNC STATUS` column will move from `Synced` → `OutOfSync` → `Synced`. Press `Ctrl+C` once it settles. Remember, you only changed the production overlay, so only the production Application was affected.
 
 ### Verify the topic is in production
 
