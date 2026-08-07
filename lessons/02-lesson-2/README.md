@@ -96,7 +96,7 @@ You'll see two Applications: `kafka-staging` and `kafka-production`. Each one wa
 Look at how the repository is organised:
 
 ```bash
-ls manifests/
+tree manifests/
 ```
 
 Instead of a flat `manifests/` directory as in Lesson 1, you'll see:
