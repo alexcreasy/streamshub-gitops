@@ -13,7 +13,7 @@ By the end of this lesson you will understand:
 - How ArgoCD can manage multiple Applications from a single Git repository, each watching a different path
 - What it means to **promote** a change from staging to production — and why it is just a Git change
 
-You will do this by observing a staging environment with a deployed Kafka topic, then promoting that topic to production by editing a single file and pushing to Git.
+You will do this by observing a staging environment with a deployed Kafka topic, then promoting that topic to production by copying it into the production overlay and pushing to Git.
 
 ---
 
@@ -114,8 +114,7 @@ manifests/
     │   └── topic.yaml
     └── production/
         ├── kustomization.yaml
-        ├── namespace.yaml
-        └── topic.yaml
+        └── namespace.yaml
 ```
 
 ### The base
@@ -173,23 +172,21 @@ resources:
   - namespace.yaml
 ```
 
-Notice that `topic.yaml` is **absent** from the resources list — even though the file exists:
-
-```bash
-ls manifests/overlays/production/
-```
-
-`topic.yaml` is there, waiting. But because it is not in `kustomization.yaml`, ArgoCD ignores it. The production Kafka cluster is running, but no topic has been promoted to it yet.
-
-This is the same pattern as Lesson 1 — a file existing in the repository does not mean it is deployed. Only what appears in `kustomization.yaml` gets deployed.
+Notice that `topic.yaml` is **absent** — both from the resources list and from the directory itself. The topic only exists in the staging overlay. The production Kafka cluster is running, but no topic has been promoted to it yet.
 
 ---
 
 ## Part 3: Promote the topic to production
 
-Your staging team has validated `my-first-topic` and it is ready for production. Promoting it is a single Git change.
+Your staging team has validated `my-first-topic` and it is ready for production. Promoting it means copying the topic definition from the staging overlay into the production overlay and adding it to production's `kustomization.yaml` — both changes together as a single atomic commit.
 
-Open `manifests/overlays/production/kustomization.yaml` in your editor and add `- topic.yaml` to the resources list:
+First, copy the topic definition from staging into production:
+
+```bash
+cp manifests/overlays/staging/topic.yaml manifests/overlays/production/topic.yaml
+```
+
+Then open `manifests/overlays/production/kustomization.yaml` in your editor and add `- topic.yaml` to the resources list:
 
 ```yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
@@ -204,12 +201,12 @@ resources:
 Save, commit, and push:
 
 ```bash
-git add manifests/overlays/production/kustomization.yaml
+git add manifests/overlays/production/
 git commit -m "Promote my-first-topic to production"
 git push
 ```
 
-That is the promotion. You changed the configuration in Git; the system will reconcile to match.
+That is the promotion. The topic definition and the kustomize entry arrive together — just as they would in a real pull request. You changed the configuration in Git; the system will reconcile to match.
 
 ---
 
@@ -251,7 +248,7 @@ Confirm staging is unchanged:
 kubectl get kafkatopic -n kafka-staging
 ```
 
-Same topic, same configuration. **You promoted a change from staging to production by pushing a single-line Git change.**
+Same topic, same configuration. **You promoted a change from staging to production by copying the resource and updating the kustomization — a single atomic Git commit.**
 
 ---
 
@@ -351,7 +348,7 @@ Production shows `10`; staging still shows `3`. **The environments are independe
 
 - Kustomize overlays let you share a base configuration and layer environment-specific changes on top without duplicating files
 - ArgoCD can manage multiple Applications from a single Git repository, each watching a different path
-- Promotion is a Git change — adding a resource to the target environment's `kustomization.yaml` is all it takes
+- Promotion is a Git change — copying a resource into the target overlay and adding it to `kustomization.yaml` is all it takes
 - Environments are isolated from each other: a change to one overlay does not affect others
 - In production, you would typically use separate clusters or ArgoCD instances per environment; the promotion principle is identical — it is always a Git change that drives the sync
 
@@ -408,14 +405,18 @@ kubectl get pods -n gitea
 ```
 
 **Topic is not appearing after sync**  
-Confirm your edit was committed correctly:
+Confirm both files were committed correctly:
 
 ```bash
 git log --oneline -3
 git show HEAD:manifests/overlays/production/kustomization.yaml
 ```
 
-Confirm `- topic.yaml` appears in the resources list.
+Confirm `- topic.yaml` appears in the resources list and the topic file exists:
+
+```bash
+git show HEAD:manifests/overlays/production/topic.yaml
+```
 
 **Strimzi is not managing the Kafka clusters**  
 Check the operator is configured to watch all namespaces:
