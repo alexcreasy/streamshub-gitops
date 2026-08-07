@@ -44,10 +44,9 @@ Run the prep script from this directory:
 This takes approximately 5 minutes. It:
 
 1. Removes the Lesson 1 state from the cluster
-2. Configures the Strimzi operator to watch the new namespaces
-3. Seeds the Gitea repository with the multi-environment overlay structure
-4. Creates two ArgoCD Applications — one for staging and one for production
-5. Waits for both Kafka clusters to become ready
+2. Seeds the Gitea repository with the multi-environment overlay structure
+3. Creates two ArgoCD Applications — one for staging and one for production
+4. Waits for both Kafka clusters to become ready
 
 When it finishes it prints the Gitea and ArgoCD credentials.
 
@@ -267,7 +266,7 @@ ArgoCD polls Gitea every 3 minutes
   └─▶ kafka-production Application: manifests/overlays/production → topic.yaml now included
   └─▶ ArgoCD applies the diff to the kafka-production namespace — creating the KafkaTopic resource
 
-Strimzi Topic Operator (watching kafka-production)
+Strimzi Topic Operator (watching all namespaces)
   └─▶ Strimzi sees the new KafkaTopic and creates the topic inside the kafka-production Kafka broker
 ```
 
@@ -419,10 +418,11 @@ git show HEAD:manifests/overlays/production/kustomization.yaml
 Confirm `- topic.yaml` appears in the resources list.
 
 **Strimzi is not managing the Kafka clusters**  
-Check the operator logs to confirm it is watching both namespaces:
+Check the operator is configured to watch all namespaces:
 
 ```bash
-kubectl logs deployment/strimzi-cluster-operator -n strimzi-operator | grep STRIMZI_NAMESPACE
+kubectl get deployment strimzi-cluster-operator -n strimzi-operator \
+  -o jsonpath='{.spec.template.spec.containers[0].env}' | grep STRIMZI_NAMESPACE
 ```
 
-You should see `kafka-staging,kafka-production`.
+You should see `STRIMZI_NAMESPACE` set to `*`.

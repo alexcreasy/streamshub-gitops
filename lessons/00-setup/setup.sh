@@ -76,17 +76,9 @@ for crb in strimzi-cluster-operator strimzi-cluster-operator-kafka-broker-delega
   kubectl patch clusterrolebinding "${crb}" --type=json -p "${STRIMZI_NS_PATCH}" 2>/dev/null || true
 done
 
-# Tell the operator to watch the kafka-tutorial namespace and create the RoleBindings it needs there.
+# Tell the operator to watch all namespaces so it can manage Kafka clusters in any lesson namespace.
 kubectl create namespace "${KAFKA_NAMESPACE}" 2>/dev/null || true
-kubectl set env deployment/strimzi-cluster-operator -n strimzi-operator STRIMZI_NAMESPACE="${KAFKA_NAMESPACE}"
-
-for rb_name in strimzi-cluster-operator strimzi-cluster-operator-entity-operator-delegation strimzi-cluster-operator-watched; do
-  ROLE_REF=$(kubectl get rolebinding "${rb_name}" -n strimzi-operator -o jsonpath='{.roleRef.name}')
-  kubectl create rolebinding "${rb_name}" \
-    --namespace "${KAFKA_NAMESPACE}" \
-    --clusterrole="${ROLE_REF}" \
-    --serviceaccount=strimzi-operator:strimzi-cluster-operator 2>/dev/null || true
-done
+kubectl set env deployment/strimzi-cluster-operator -n strimzi-operator STRIMZI_NAMESPACE="*"
 
 info "Waiting for Strimzi operator to be ready..."
 kubectl rollout status deployment/strimzi-cluster-operator -n strimzi-operator --timeout=300s

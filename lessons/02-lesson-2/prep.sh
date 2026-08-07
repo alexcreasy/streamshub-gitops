@@ -5,9 +5,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../00-setup/common.sh
 source "${SCRIPT_DIR}/../00-setup/common.sh"
 
-KAFKA_STAGING_NAMESPACE="kafka-staging"
-KAFKA_PRODUCTION_NAMESPACE="kafka-production"
-
 info()  { echo -e "\033[1;34m[INFO]\033[0m  $*"; }
 warn()  { echo -e "\033[1;33m[WARN]\033[0m  $*"; }
 error() { echo -e "\033[1;31m[ERROR]\033[0m $*" >&2; }
@@ -66,30 +63,7 @@ kubectl delete namespace "${KAFKA_NAMESPACE}" "${KAFKA_STAGING_NAMESPACE}" "${KA
 
 info "Previous lesson state cleaned up."
 
-# ─── Step 3: Configure Strimzi to watch staging and production namespaces ──────
-
-info "Configuring Strimzi operator for staging and production namespaces..."
-
-for ns in "${KAFKA_STAGING_NAMESPACE}" "${KAFKA_PRODUCTION_NAMESPACE}"; do
-  kubectl create namespace "${ns}" 2>/dev/null || true
-  for rb_name in strimzi-cluster-operator strimzi-cluster-operator-entity-operator-delegation strimzi-cluster-operator-watched; do
-    ROLE_REF=$(kubectl get rolebinding "${rb_name}" -n strimzi-operator -o jsonpath='{.roleRef.name}' 2>/dev/null || echo "")
-    if [[ -n "${ROLE_REF}" ]]; then
-      kubectl create rolebinding "${rb_name}" \
-        --namespace "${ns}" \
-        --clusterrole="${ROLE_REF}" \
-        --serviceaccount=strimzi-operator:strimzi-cluster-operator 2>/dev/null || true
-    fi
-  done
-done
-
-kubectl set env deployment/strimzi-cluster-operator -n strimzi-operator \
-  STRIMZI_NAMESPACE="${KAFKA_STAGING_NAMESPACE},${KAFKA_PRODUCTION_NAMESPACE}"
-
-info "Waiting for Strimzi operator to restart..."
-kubectl rollout status deployment/strimzi-cluster-operator -n strimzi-operator --timeout=120s
-
-# ─── Step 4: Seed the Gitea repository with the overlay structure ─────────────
+# ─── Step 3: Seed the Gitea repository with the overlay structure ─────────────
 
 info "Resetting Gitea repository to lesson-2 starting state..."
 
@@ -114,7 +88,7 @@ fi
 TARGET_REVISION=$(git rev-parse HEAD)
 popd >/dev/null
 
-# ─── Step 5: Create ArgoCD Applications for staging and production ─────────────
+# ─── Step 4: Create ArgoCD Applications for staging and production ─────────────
 
 info "Creating ArgoCD applications for staging and production..."
 
@@ -170,7 +144,7 @@ spec:
       - CreateNamespace=true
 EOF
 
-# ─── Step 6: Wait for both applications to sync ───────────────────────────────
+# ─── Step 5: Wait for both applications to sync ───────────────────────────────
 
 info "Waiting for ArgoCD to sync both applications..."
 
@@ -201,7 +175,7 @@ kubectl wait "kafka/${KAFKA_CLUSTER_NAME}" --for=condition=Ready -n "${KAFKA_STA
 kubectl wait "kafka/${KAFKA_CLUSTER_NAME}" --for=condition=Ready -n "${KAFKA_PRODUCTION_NAMESPACE}" --timeout=600s 2>/dev/null &
 wait
 
-# ─── Step 7: Print starting instructions ──────────────────────────────────────
+# ─── Step 6: Print starting instructions ──────────────────────────────────────
 
 ARGOCD_PASSWORD=$(b64decode "$(kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath='{.data.password}')")
 

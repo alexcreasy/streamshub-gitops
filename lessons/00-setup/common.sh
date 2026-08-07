@@ -10,7 +10,6 @@ GITEA_REPO="streamshub-gitops"
 GITEA_HOST_PORT=3001
 GITEA_URL="http://localhost:${GITEA_HOST_PORT}"
 
-# KAFKA_NAMESPACE is also the namespace the Strimzi operator is configured to watch.
 KAFKA_CLUSTER_NAME="my-cluster"
 KAFKA_NAMESPACE="kafka-tutorial"
 
