@@ -220,20 +220,13 @@ That is the promotion. The topic definition and the kustomize entry arrive toget
 
 ## Part 4: Watch both ArgoCD Applications
 
-Just as in lesson 1, ArgoCD polls the repository every 3 minutes by default. If you want to skip that wait, you can force an immediate refresh by running:
-
-```bash
-kubectl annotate application kafka-production -n argocd \
-  argocd.argoproj.io/refresh=normal --overwrite
-```
-
-Watch the production Application detect and apply your change:
+ArgoCD polls the repository every 30 seconds. Watch the production Application detect and apply your change:
 
 ```bash
 kubectl get application kafka-production -n argocd -w
 ```
 
-The `SYNC STATUS` column will move from `Synced` → `OutOfSync` → `Synced`. Press `Ctrl+C` once it settles. Remember, you only changed the production overlay, so only the production Application was affected.
+The `SYNC STATUS` column will move from `Synced` → `OutOfSync` → `Synced` within about 30 seconds. Press `Ctrl+C` once it settles. Remember, you only changed the production overlay, so only the production Application was affected.
 
 ### Verify the topic is in production
 
@@ -266,7 +259,7 @@ Same topic, same configuration. **You promoted a change from staging to producti
 git push
   └─▶ Gitea receives the commit
 
-ArgoCD polls Gitea every 3 minutes
+ArgoCD polls Gitea every 30 seconds
   └─▶ kafka-staging Application: manifests/overlays/staging → no change → stays Synced
   └─▶ kafka-production Application: manifests/overlays/production → topic.yaml now included
   └─▶ ArgoCD applies the diff to the kafka-production namespace — creating the KafkaTopic resource
@@ -296,17 +289,6 @@ kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath='{.data.pas
 ```
 
 Log in with username `admin`. You will see both `kafka-staging` and `kafka-production` Applications. Click each one to see its resource tree — the resources are the same (Namespace, KafkaNodePool, Kafka), but one includes a KafkaTopic and the other does not.
-
----
-
-## Optional: Force an immediate sync
-
-To trigger ArgoCD without waiting up to 3 minutes:
-
-```bash
-kubectl annotate application kafka-production -n argocd \
-  argocd.argoproj.io/refresh=normal --overwrite
-```
 
 ---
 

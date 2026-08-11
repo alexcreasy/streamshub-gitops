@@ -142,20 +142,13 @@ git commit -m "Reduce my-first-topic to 1 partition"
 git push
 ```
 
-As in the previous lessons, ArgoCD polls the repository every 3 minutes by default. If you want to skip the wait run the following command:  
-
-```bash
-kubectl annotate application kafka-tutorial -n argocd \
-  argocd.argoproj.io/refresh=normal --overwrite
-```
-
-Watch ArgoCD detect the change, if you ran the command to skip the wait it will already be in the final state shown below:
+ArgoCD polls the repository every 30 seconds. Watch it detect the change:
 
 ```bash
 kubectl get application kafka-tutorial -n argocd -w
 ```
 
-The `SYNC STATUS` column will move from `Synced` → `OutOfSync` → `Synced`. Press `Ctrl+C` once it settles.
+The `SYNC STATUS` column will move from `Synced` → `OutOfSync` → `Synced` within about 30 seconds. Press `Ctrl+C` once it settles.
 
 The output should now look something like this:
 
@@ -292,14 +285,7 @@ This removes the bad commit as if it never existed. In a GitOps context this is 
 
 ## Part 5: Watch the recovery
 
-Once again, to skip the wait for ArgoCD to poll the repository run:
-
-```bash
-kubectl annotate application kafka-tutorial -n argocd \
-  argocd.argoproj.io/refresh=normal --overwrite
-```
-
-Watch ArgoCD pick up the revert, if you skipped the wait ArgoCD will already be in the final state shown below:
+ArgoCD will pick up the revert within about 30 seconds. Watch the recovery:
 
 ```bash
 kubectl get application kafka-tutorial -n argocd -w
@@ -357,7 +343,7 @@ The complete sequence is preserved: what was changed, when, and when it was reve
 git push (the revert commit)
   └─▶ Gitea receives the new commit
 
-ArgoCD polls Gitea
+ArgoCD polls Gitea (every 30 seconds)
   └─▶ Detects HEAD has moved (new revert commit)
   └─▶ Renders the kustomize manifests — topic.yaml now has partitions: 3
   └─▶ Compares live cluster state to desired state
@@ -475,7 +461,7 @@ git status                 # confirm nothing is unpushed ("Your branch is up to 
 kubectl get application kafka-tutorial -n argocd   # confirm SYNC STATUS is Synced
 ```
 
-If the revert was not pushed, run `git push`. To trigger an immediate ArgoCD sync:
+If the revert was not pushed, run `git push`. To trigger an immediate ArgoCD sync without waiting for the next 30-second poll:
 
 ```bash
 kubectl annotate application kafka-tutorial -n argocd \
