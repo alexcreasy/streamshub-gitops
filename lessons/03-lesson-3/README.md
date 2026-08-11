@@ -142,13 +142,20 @@ git commit -m "Reduce my-first-topic to 1 partition"
 git push
 ```
 
-ArgoCD polls the repository every 30 seconds. Watch it detect the change:
+ArgoCD polls the repository every 30 seconds. If you want to skip the wait run the following command:  
+
+```bash
+kubectl annotate application kafka-tutorial -n argocd \
+  argocd.argoproj.io/refresh=normal --overwrite
+```
+
+Watch ArgoCD detect the change, if you ran the command to skip the wait it will already be in the final state shown below:
 
 ```bash
 kubectl get application kafka-tutorial -n argocd -w
 ```
 
-The `SYNC STATUS` column will move from `Synced` → `OutOfSync` → `Synced` within about 30 seconds. Press `Ctrl+C` once it settles.
+The `SYNC STATUS` column will move from `Synced` → `OutOfSync` → `Synced`. Press `Ctrl+C` once it settles.
 
 The output should now look something like this:
 
@@ -285,7 +292,14 @@ This removes the bad commit as if it never existed. In a GitOps context this is 
 
 ## Part 5: Watch the recovery
 
-ArgoCD will pick up the revert within about 30 seconds. Watch the recovery:
+Once again, to skip the wait for ArgoCD to poll the repository run:
+
+```bash
+kubectl annotate application kafka-tutorial -n argocd \
+  argocd.argoproj.io/refresh=normal --overwrite
+```
+
+Watch ArgoCD pick up the revert, if you skipped the wait ArgoCD will already be in the final state shown below:
 
 ```bash
 kubectl get application kafka-tutorial -n argocd -w

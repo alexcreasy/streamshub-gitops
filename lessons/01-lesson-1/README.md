@@ -176,13 +176,20 @@ That's it. You've made your GitOps change. The commit is now in the repository t
 
 ## Part 3: Watch the GitOps loop
 
-ArgoCD polls the repository every 30 seconds. Watch it detect your change:
+ArgoCD polls the repository every 30 seconds. If you want to skip the wait run the following command:  
+
+```bash
+kubectl annotate application kafka-tutorial -n argocd \
+  argocd.argoproj.io/refresh=normal --overwrite
+```
+
+Watch ArgoCD detect the change, if you chose to skip the wait, the sync status will already be the `Synced` state:
 
 ```bash
 kubectl get application kafka-tutorial -n argocd -w
 ```
 
-Watch the `SYNC STATUS` column. Within about 30 seconds it will move from `Synced` → `OutOfSync` (when ArgoCD detects your push) → `Synced` again (when it has applied the change). Press `Ctrl+C` once you see it settle back to `Synced`.
+Watch the `SYNC STATUS` column. It will move from `Synced` → `OutOfSync` (when ArgoCD detects your push) → `Synced` again (when it has applied the change). Press `Ctrl+C` once you see it settle back to `Synced`.
 
 
 ### Verify the topic was created
