@@ -4,9 +4,15 @@ title = 'GitOps Tutorial Series: Lesson 2 Companion Guide'
 
 # Introduction
 
-In lesson 1 you made your first GitOps change: you edited `kustomization.yaml`, pushed to Git, and watched ArgoCD reconcile the cluster to match. That workflow demonstrates the core GitOps loop, but it operates on a single environment. In practice, organisations do not push changes directly to production. They maintain a chain of environments — staging first, then production — and validate changes at each stage before promoting them forward. This practice of *environment promotion* is central to how teams ship safely at scale.
+In lesson 1, you made your first GitOps change: you edited your cluster's configuration, pushed the changes to the Git repository, and sat back while ArgoCD reconciled the changes and rolled them out to the cluster to match. This workflow demonstrates the core GitOps loop: defining your infrastructure as code and employing automation to roll out those changes.
 
-This guide explains how Kustomize overlays solve the multi-environment configuration problem and how ArgoCD manages multiple environments independently from a single Git repository. You will see why promotion in a GitOps world is not a deploy command or a pipeline trigger — it is a Git commit that updates the target environment's desired state.
+In this lesson, you will see how these same principles apply as your infrastructure scales and grows in complexity. In practice, organizations should not push changes directly to production. Instead, best practice dictates maintaining a chain of environments, such as staging followed by production. At each stage, changes must be validated before being promoted forward. This practice, known as environment promotion, is central to shipping safely at scale.
+
+Managing multiple, similar environments adds a layer of complexity. While staging and production environments usually have intentional differences, such as the number of replicas or allotted resources, it is essential that they remain functionally identical in all other respects. Otherwise, you cannot safely validate that changes deployed to staging will work correctly in production. Manual "ClickOps" processes inevitably lead to configuration drift. Because changes are applied ad-hoc rather than through a controlled, automated pipeline, minor discrepancies between environments accumulate over time, causing them to diverge in ways that are difficult to track or reconcile.
+
+GitOps simplifies this problem. By defining your infrastructure as code, you can create a base configuration that describes common elements, then define differences in separate configuration files. This makes it straightforward to validate exactly what differs between environments.
+
+This guide explains how Kustomize overlays solve the multi-environment configuration problem and how ArgoCD manages multiple environments independently from a single Git repository. You will see why promotion in a GitOps world is not a matter of running a deploy command or clicking through a UI; it is a change in configuration followed by a Git commit that updates the target environment's desired state.
 
 # Core Concepts
 
