@@ -4,53 +4,51 @@ title = 'GitOps Tutorial Series: Lesson 2 Companion Guide'
 
 # Introduction
 
-In lesson 1, you made your first GitOps change: you edited your cluster's configuration, pushed the changes to the Git repository, and sat back while ArgoCD reconciled the changes and rolled them out to the cluster to match. This workflow demonstrates the core GitOps loop: defining your infrastructure as code and employing automation to roll out those changes.
+In lesson 1, you successfully performed your first GitOps change. You edited your cluster configuration, pushed it to Git, and watched as ArgoCD handled the heavy lifting of reconciling and rolling out those updates. This workflow is the heart of the GitOps loop: you define your infrastructure as code and let automation ensure your cluster matches that vision.
 
-In this lesson, you will see how these same principles apply as your infrastructure scales and grows in complexity. In practice, organizations should not push changes directly to production. Instead, best practice dictates maintaining a chain of environments, such as staging followed by production. At each stage, changes must be validated before being promoted forward. This practice, known as environment promotion, is central to shipping safely at scale.
+But what happens when your project starts to scale? As organizations grow, managing infrastructure becomes a high-stakes balancing act. You cannot simply push every change directly to production and hope for the best. Instead, you need a reliable way to validate changes in a staging environment before promoting them forward. This practice of environment promotion is how you ship safely at scale.
 
-Managing multiple, similar environments adds a layer of complexity. While staging and production environments usually have intentional differences, such as the number of replicas or allotted resources, it is essential that they remain functionally identical in all other respects. Otherwise, you cannot safely validate that changes deployed to staging will work correctly in production. Manual "ClickOps" processes inevitably lead to configuration drift. Because changes are applied ad-hoc rather than through a controlled, automated pipeline, minor discrepancies between environments accumulate over time, causing them to diverge in ways that are difficult to track or reconcile.
+The real challenge lies in keeping these environments in sync. While staging and production will have intentional differences, like the number of replicas or resource quotas, they should stay functionally identical. If they diverge, you lose the ability to guarantee that a successful test in staging will actually work in production. Relying on manual "ClickOps" processes makes this divergence inevitable. Without a controlled pipeline, minor discrepancies accumulate over time into configuration drift that is difficult to track.
 
-GitOps simplifies this problem. By defining your infrastructure as code, you can create a base configuration that describes common elements, then define differences in separate configuration files. This makes it straightforward to validate exactly what differs between environments.
+As we’ve previously discussed, by adopting GitOps you define your infrastructure as configuration managed within a Git repository. This repository serves as the single source of truth for your environments, allowing you to move away from the manual, error-prone processes that inevitably lead to configuration drift.
 
-This guide explains how Kustomize overlays solve the multi-environment configuration problem and how ArgoCD manages multiple environments independently from a single Git repository. You will see why promotion in a GitOps world is not a matter of running a deploy command or clicking through a UI; it is a change in configuration followed by a Git commit that updates the target environment's desired state.
+In this lesson, we will explore how Kustomize overlays handle these multi-environment configurations and how ArgoCD manages them independently from a single repository. You will see that promotion in a GitOps world is not about running a manual deploy command. Instead, it is a simple configuration change followed by a Git commit that updates the desired state for your target environment.
 
 # Core Concepts
 
-## The Multi-Environment Problem
+## Multi-Environment Configuration
 
-Organisations maintain chains of environments to reduce risk. Changes are deployed to a lower environment first, validated, and then promoted to the next. A misconfigured resource is caught in staging rather than discovered in production. The challenge arises in managing configuration across these environments: each one needs the same core infrastructure — the same cluster definition, the same node pool — but with different settings, such as different namespaces, different scaling parameters, or different retention policies.
-
-Duplicating entire configuration files per environment is fragile. A change to the shared cluster definition would need to be applied to every copy independently, and a missed update creates configuration drift between environments. What you need is a way to define shared configuration once and layer environment-specific differences on top.
+We previously discussed why organizations maintain multiple environments and how GitOps helps you avoid configuration drift by defining your environments in configuration files. However, simply creating separate configuration files for each environment is still problematic. Maintaining multiple files is inherently fragile, as updating a shared cluster definition would require you to modify every copy independently. If you miss a single update, you introduce the very drift you were trying to avoid. Instead, you need a way to define your shared configuration once and layer environment-specific differences on top.
 
 ## The Kustomize Base and Overlay Pattern
 
-Kustomize addresses this with a *base and overlay* pattern. The *base* directory contains resources shared across all environments — your core cluster definition, node pools, and any configuration that should be identical everywhere. Each environment then gets its own *overlay* directory that references the base and layers environment-specific resources or configuration on top.
+So, how do we solve the duplication problem without losing our minds? This is where Kustomize steps in with its 'base and overlay' pattern. Think of the base as your primary definition for your environments. It contains all the shared configuration that every environment needs. Your core cluster definition stays here, defined exactly once. Then, you have your overlays. These are simply separate directories for each environment, like staging or production. An overlay references the base and then layers on just the differences. If you need a different namespace or extra scaling parameters for production, you define those specific overrides in that environment's overlay.
 
-Each overlay's `kustomization.yaml` includes the base via a relative path and sets a `namespace:` field that Kustomize injects into every resource it renders. This means the same cluster definition in the base becomes a staging cluster or a production cluster depending on which overlay renders it. Resources that should exist in only one environment — such as a topic that is ready for staging but not yet for production — are simply included only in that overlay's resource list.
+Each overlay includes a kustomization.yaml file that tells Kustomize how to glue things together. When it runs, Kustomize takes the base, injects the environment-specific settings, and generates the final configuration.
 
-Key benefits of adopting the base and overlay pattern include:
+Why is this approach a game changer?
 
-* **No configuration duplication**: shared resources are defined once in the base and inherited by every overlay, so a change to the base propagates to all environments automatically.  
-* **Scoped customisation**: each overlay contains only its environment's specific differences, making it immediately clear what varies between staging and production.  
-* **Straightforward scaling**: adding a new environment means creating a new overlay directory and a corresponding ArgoCD Application, not duplicating an entire set of configuration files or building a new pipeline.
+* **No more configuration duplication:** Because shared resources live in the base, you update them once and the change flows to every environment automatically.  
+* **Crystal clear customization:** Each overlay only contains the specific differences for that environment. You can see at a glance exactly how staging differs from production.  
+* **Easy scaling:** Need to add a new environment? Just create a new overlay directory and a matching ArgoCD Application. You don't need to copy entire sets of files or build a complex new pipeline.
 
 ## Promotion as a Git Commit
 
-In a traditional workflow, promoting a change from staging to production means triggering a deployment pipeline or running a command against the target environment. In GitOps, *promotion* is a configuration change. You copy the resource into the target environment's overlay, add it to that overlay's `kustomization.yaml`, and commit. No deploy command is run. No pipeline is triggered. The commit itself is the promotion, and the reconciliation loop takes care of the rest.
-
-This makes every promotion *auditable* and *reviewable*. Each promotion is a Git commit with an author and a timestamp. In a team setting it would take the form of a pull request, reviewed by peers before merging. The Git history becomes a complete record of what was promoted, when, and by whom — the same traceability that developers expect for code changes, extended to infrastructure operations.
+As you saw in Lesson 1, you change the state of your cluster by updating the configuration and pushing it to your Git repository. Promotion is no different, you simply update the production overlay and push the commit. This approach ensures every promotion is auditable and reviewable, in Lesson 3 you’ll see why this is important.
 
 ## Multiple ArgoCD Applications
 
-ArgoCD supports the multi-environment pattern through multiple *Application* resources, each configured to watch a different directory path in the same Git repository and deploy to a different namespace. In the lesson, a `kafka-staging` Application watches the staging overlay and deploys to the `kafka-staging` namespace, while a `kafka-production` Application watches the production overlay and deploys to `kafka-production`. ArgoCD evaluates each Application independently on every poll cycle.
+ArgoCD supports the multi-environment pattern through multiple *Application* resources, each configured to watch a different directory path in the same Git repository and deploy to a different namespace. In the lesson, we’ll use a separate Application for staging and production. ArgoCD evaluates each Application independently on every poll cycle.
 
-This independence provides *environment isolation*. When you push a commit that adds a resource to the production overlay, only the production Application detects a change and syncs. The staging Application sees no difference in its watched path and remains unaffected. Changes to one environment cannot accidentally affect another, because each Application's scope is limited to its own overlay directory and target namespace.
+This independence provides *environment isolation*. When you push a commit that adds a resource to the production overlay, only the production Application detects a change and triggers a roll out. Changes to one environment cannot accidentally affect another, because each Application's scope is limited to its own overlay directory and target namespace.
 
 # What to watch for in the lesson
 
-Now that you have looked at the core concepts and technologies behind environment promotion, it is almost time to dive in, but as you do look out for these moments where the concepts above become concrete:
+Now that you have explored the core concepts and technologies behind environment promotion, it is time to dive in. As you do, look out for these moments where the concepts become concrete:
 
-\- When you explore the `manifests/` directory and see `base/`, `overlays/staging/`, and `overlays/production/`, you are looking at the Kustomize base and overlay pattern in practice — shared configuration in the base, with environment-specific layers on top.  
-\- When you copy `topic.yaml` into the production overlay, add it to `kustomization.yaml`, and run `git push`, you are performing a GitOps promotion — the commit that updates the target environment's desired state is the only deploy action required.  
-\- When ArgoCD syncs the `kafka-production` Application while `kafka-staging` remains unchanged, you are seeing environment isolation — each Application independently watches its own overlay path, so a change to one environment never affects another.  
-Now you're ready to try the second lesson, check out the lesson 2 readme to run through the tutorial.
+* When you explore the `manifests/` directory and see `base/`, `overlays/staging/`, and `overlays/production/`, you are looking at the Kustomize base and overlay pattern in practice: shared configuration in the base, with environment-specific layers on top. 
+* When you copy `topic.yaml` into the production overlay, add it to `kustomization.yaml`, and run git push, you are performing a GitOps promotion. The commit that updates the target environment's desired state is the only deployment action required.  
+* When ArgoCD syncs the kafka-production Application while kafka-staging remains unchanged, you are seeing environment isolation. Because each Application independently watches its own overlay path, a change to one environment never affects another.
+
+Now you are ready to try the second lesson; check out the lesson 2 readme to run through the tutorial.
+
