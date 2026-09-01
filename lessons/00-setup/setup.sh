@@ -28,7 +28,7 @@ info "All prerequisites satisfied."
 
 # ─── Step 2: Create KinD cluster ───────────────────────────────────────────────
 
-if kind get clusters 2>/dev/null | grep -q "^${CLUSTER_NAME}$"; then
+if kubectl cluster-info --context "kind-${CLUSTER_NAME}" >/dev/null 2>&1; then
   info "KinD cluster '${CLUSTER_NAME}' already exists, skipping creation."
 else
   info "Creating KinD cluster '${CLUSTER_NAME}'..."

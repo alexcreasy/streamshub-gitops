@@ -34,7 +34,7 @@ cleanup() {
 # ─── Precondition checks ─────────────────────────────────────────────────────
 
 require_cluster() {
-  if ! kind get clusters 2>/dev/null | grep -q "^${CLUSTER_NAME}$"; then
+  if ! kubectl cluster-info --context "kind-${CLUSTER_NAME}" >/dev/null 2>&1; then
     error "KinD cluster '${CLUSTER_NAME}' is not running."
     error "Please run the setup script first: ../00-setup/setup.sh"
     exit 1
