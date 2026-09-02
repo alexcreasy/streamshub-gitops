@@ -5,38 +5,65 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=common.sh
 source "${SCRIPT_DIR}/common.sh"
 
+for arg in "$@"; do
+  case "$arg" in
+    --create-cluster) ;;
+    *)
+      error "Unknown option: $arg"
+      exit 1
+      ;;
+  esac
+done
+resolve_flag CREATE_CLUSTER --create-cluster "$@"
+CREATE_CLUSTER_MODE="$RESOLVED_FLAG"
+
 # ─── Step 1: Check prerequisites ───────────────────────────────────────────────
 
 info "Checking prerequisites..."
-for cmd in kind kubectl git curl; do
+REQUIRED_CMDS=(kubectl git curl)
+[[ "$CREATE_CLUSTER_MODE" == "true" ]] && REQUIRED_CMDS+=(kind)
+for cmd in "${REQUIRED_CMDS[@]}"; do
   if ! command -v "$cmd" &>/dev/null; then
     error "'$cmd' is required but not found in PATH."
     exit 1
   fi
 done
 
-if docker info &>/dev/null 2>&1; then
-  :
-elif podman info &>/dev/null 2>&1; then
-  :
-else
-  error "Neither Docker nor Podman is running. Please start your container runtime."
-  exit 1
+if [[ "$CREATE_CLUSTER_MODE" == "true" ]]; then
+  if docker info &>/dev/null 2>&1; then
+    :
+  elif podman info &>/dev/null 2>&1; then
+    :
+  else
+    error "Neither Docker nor Podman is running. Please start your container runtime."
+    exit 1
+  fi
 fi
 
 info "All prerequisites satisfied."
 
-# ─── Step 2: Create KinD cluster ───────────────────────────────────────────────
+# ─── Step 2: Set up the cluster ────────────────────────────────────────────────
 
-if kubectl cluster-info --context "kind-${CLUSTER_NAME}" >/dev/null 2>&1; then
-  info "KinD cluster '${CLUSTER_NAME}' already exists, skipping creation."
+if [[ "$CREATE_CLUSTER_MODE" == "true" ]]; then
+  if kubectl cluster-info --context "kind-${CLUSTER_NAME}" >/dev/null 2>&1; then
+    info "KinD cluster '${CLUSTER_NAME}' already exists, skipping creation."
+  else
+    info "Creating KinD cluster '${CLUSTER_NAME}'..."
+    kind create cluster --name "${CLUSTER_NAME}" --config "${SCRIPT_DIR}/kind-config.yaml"
+  fi
+
+  kubectl cluster-info --context "kind-${CLUSTER_NAME}" >/dev/null 2>&1
+  info "Cluster is ready."
 else
-  info "Creating KinD cluster '${CLUSTER_NAME}'..."
-  kind create cluster --name "${CLUSTER_NAME}" --config "${SCRIPT_DIR}/kind-config.yaml"
+  CURRENT_CONTEXT="$(kubectl config current-context 2>/dev/null || echo '')"
+  info "Using existing cluster (current kubectl context: ${CURRENT_CONTEXT:-none})..."
+  if ! kubectl cluster-info >/dev/null 2>&1; then
+    error "No reachable Kubernetes cluster for the current kubectl context."
+    error "Switch to the right context first (kubectl config use-context ...), or pass --create-cluster to provision a local KinD cluster."
+    exit 1
+  fi
+  info "Cluster is ready."
 fi
-
-kubectl cluster-info --context "kind-${CLUSTER_NAME}" >/dev/null 2>&1
-info "Cluster is ready."
 
 # ─── Step 3: Install ArgoCD ────────────────────────────────────────────────────
 
@@ -97,6 +124,12 @@ done
 if [[ "${GITEA_READY}" != "true" ]]; then
   error "Gitea is not reachable on localhost:${GITEA_HOST_PORT} after 3 minutes."
   error "Check pod status: kubectl get pods -n gitea"
+  if [[ "$CREATE_CLUSTER_MODE" != "true" ]]; then
+    error "When not using --create-cluster, you're responsible for exposing the"
+    error "'gitea-http' Service (NodePort 30003) at localhost:${GITEA_HOST_PORT} yourself,"
+    error "e.g. by leaving this running in another terminal for the whole tutorial:"
+    error "  kubectl port-forward svc/gitea-http -n gitea ${GITEA_HOST_PORT}:3000"
+  fi
   exit 1
 fi
 
@@ -188,6 +221,12 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 info "Setup complete! Your tutorial environment is ready."
 echo ""
+if [[ "$CREATE_CLUSTER_MODE" != "true" ]]; then
+  echo "  This is running against your existing cluster's current kubectl context."
+  echo "  Keep Gitea reachable at ${GITEA_URL} for the whole tutorial, e.g.:"
+  echo "     kubectl port-forward svc/gitea-http -n gitea ${GITEA_HOST_PORT}:3000"
+  echo ""
+fi
 echo "  Next step: run the prep script for the lesson you want to start:"
 echo "     cd ../01-lesson-1 && ./prep.sh"
 echo ""
@@ -197,7 +236,12 @@ echo "     URL:      https://localhost:8080"
 echo "     Username: admin"
 echo "     Password: ${ARGOCD_PASSWORD}"
 echo ""
-echo "  Cleanup when done with all lessons:"
-echo "     ./teardown.sh"
+if [[ "$CREATE_CLUSTER_MODE" == "true" ]]; then
+  echo "  Cleanup when done with all lessons:"
+  echo "     ./teardown.sh --delete-cluster"
+else
+  echo "  Cleanup when done with all lessons:"
+  echo "     ./teardown.sh"
+fi
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

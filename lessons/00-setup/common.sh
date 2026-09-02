@@ -31,11 +31,27 @@ cleanup() {
   fi
 }
 
+# ─── Flag/env resolution ──────────────────────────────────────────────────────
+
+# Usage: resolve_flag <ENV_VAR_NAME> <--flag-string> "$@"
+# Sets RESOLVED_FLAG=true/false. The CLI flag always wins over the env var.
+resolve_flag() {
+  local env_var_name="$1" flag_string="$2"
+  shift 2
+  case "${!env_var_name:-false}" in
+    true|1|yes) RESOLVED_FLAG=true ;;
+    *) RESOLVED_FLAG=false ;;
+  esac
+  for arg in "$@"; do
+    [[ "$arg" == "$flag_string" ]] && RESOLVED_FLAG=true
+  done
+}
+
 # ─── Precondition checks ─────────────────────────────────────────────────────
 
 require_cluster() {
-  if ! kubectl cluster-info --context "kind-${CLUSTER_NAME}" >/dev/null 2>&1; then
-    error "KinD cluster '${CLUSTER_NAME}' is not running."
+  if ! kubectl cluster-info >/dev/null 2>&1; then
+    error "No reachable Kubernetes cluster for the current kubectl context ($(kubectl config current-context 2>/dev/null || echo 'none'))."
     error "Please run the setup script first: ../00-setup/setup.sh"
     exit 1
   fi

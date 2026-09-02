@@ -8,13 +8,18 @@ This directory sets up the shared infrastructure for the GitOps tutorial series.
 
 | Tool | Purpose | Install |
 |------|---------|---------|
-| **Docker** or **Podman** | Container runtime | [docker](https://docs.docker.com/get-docker/)<br>[podman](https://podman.io/docs/installation) |
-| **KinD** (v0.20+) | Local Kubernetes clusters | [KinD](https://kind.sigs.k8s.io/docs/user/quick-start/#installation) |
 | **kubectl** | Kubernetes CLI | [kubectl](https://kubernetes.io/docs/tasks/tools/) |
 | **git** | Version control | [git-scm.com](https://git-scm.com/) |
 | **curl** | HTTP requests | Usually pre-installed |
 
-**System requirements:** ~8 GB of available memory for Docker/Podman.
+Additionally, if using `--create-cluster` to have the script provision a local KinD cluster for you:
+
+| Tool | Purpose | Install |
+|------|---------|---------|
+| **Docker** or **Podman** | Container runtime | [docker](https://docs.docker.com/get-docker/)<br>[podman](https://podman.io/docs/installation) |
+| **KinD** (v0.20+) | Local Kubernetes clusters | [KinD](https://kind.sigs.k8s.io/docs/user/quick-start/#installation) |
+
+**System requirements:** ~8 GB of available memory for Docker/Podman when using `--create-cluster`.
 
 ---
 
@@ -23,7 +28,7 @@ This directory sets up the shared infrastructure for the GitOps tutorial series.
 Run the setup script from this directory:
 
 ```bash
-./setup.sh
+./setup.sh --create-cluster
 ```
 
 This takes approximately 8 minutes and creates a fully self-contained local environment:
@@ -40,6 +45,29 @@ When the script finishes, it prints the ArgoCD admin password and tells you whic
 
 ---
 
+## Using an existing cluster
+
+If you already have a Kubernetes cluster (KinD set up differently, minikube, k3d, OpenShift, a remote cluster, etc.), you can skip local cluster provisioning entirely. This is the **default** behavior — running `./setup.sh` with no flags installs ArgoCD, Strimzi, and Gitea onto whatever `kubectl`'s current context points at, instead of creating a KinD cluster:
+
+```bash
+kubectl config use-context <your-context>
+./setup.sh
+```
+
+You can also opt in explicitly with `CREATE_CLUSTER=true ./setup.sh`, but a flag/env var isn't needed for this mode since it's the default — `--create-cluster` (or `CREATE_CLUSTER=true`) is only needed when you *want* setup.sh to provision a local KinD cluster for you (flag takes precedence over the env var).
+
+Things to know when using an existing cluster:
+
+* **The cluster is assumed to be dedicated to this tutorial.** Setup doesn't check for or try to coexist with a pre-existing ArgoCD/Strimzi/Gitea install.
+* **You need cluster-admin rights**, since setup installs cluster-scoped resources (CRDs, ClusterRoleBindings) for Strimzi and ArgoCD.
+* **You are responsible for making Gitea reachable at `http://localhost:3001` for the whole tutorial** (not just while `setup.sh` runs) — every lesson clones from and pushes to that address. If your cluster doesn't otherwise expose NodePort `30003` there, leave a port-forward running in another terminal for the duration of the tutorial:
+
+  ```bash
+  kubectl port-forward svc/gitea-http -n gitea 3001:3000
+  ```
+
+---
+
 ## Starting a lesson
 
 After setup completes, follow the lesson guide of your choice:
@@ -49,21 +77,32 @@ After setup completes, follow the lesson guide of your choice:
 
 ## Teardown
 
-When you are done with all lessons, delete the cluster to remove everything:
+When you are done with all lessons:
 
-```bash
-./teardown.sh
-```
+* If you used `--create-cluster` (or `CREATE_CLUSTER=true`), delete the KinD cluster to remove everything:
+
+  ```bash
+  ./teardown.sh --delete-cluster
+  ```
+
+* Otherwise (existing-cluster mode, the default), remove just the resources this tutorial installed, leaving the rest of the cluster untouched:
+
+  ```bash
+  ./teardown.sh
+  ```
 
 ---
 
 ## Troubleshooting
 
 **Docker is not running**
-Start Docker Desktop or your container runtime and run `./setup.sh` again.
+Start Docker Desktop or your container runtime and run `./setup.sh --create-cluster` again.
 
 **Port 3001 is already in use**
-Another application is using port 3001. Stop that application, or change the port in `kind-config.yaml` (update both `hostPort` and the `nodePort` in `gitea/deployment.yaml` to match).
+Another application is using port 3001. Stop that application, or (when using `--create-cluster`) change the port in `kind-config.yaml` (update both `hostPort` and the `nodePort` in `gitea/deployment.yaml` to match).
+
+**Gitea is not reachable (existing-cluster mode)**
+When not using `--create-cluster`, nothing automatically exposes Gitea's NodePort on your machine. Leave a port-forward running for the duration of the tutorial: `kubectl port-forward svc/gitea-http -n gitea 3001:3000`.
 
 **Kafka cluster is not becoming ready**
 Kafka takes a few minutes to start, especially on machines with limited resources. Check pod status:
