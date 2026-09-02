@@ -9,6 +9,9 @@ GITEA_PASSWORD="tutorial-password"
 GITEA_REPO="streamshub-gitops"
 GITEA_HOST_PORT=3001
 GITEA_URL="http://localhost:${GITEA_HOST_PORT}"
+GITEA_EXPOSURE_MANAGED=false
+
+ARGOCD_KUSTOMIZE_DIR="${SCRIPT_DIR}/argocd"
 
 KAFKA_CLUSTER_NAME="my-cluster"
 KAFKA_NAMESPACE="kafka-tutorial"
@@ -23,30 +26,62 @@ warn()  { echo -e "\033[1;33m[WARN]\033[0m  $*"; }
 error() { echo -e "\033[1;31m[ERROR]\033[0m $*" >&2; }
 b64decode() { echo "$1" | base64 -d 2>/dev/null || echo "$1" | base64 -D 2>/dev/null; }
 
-# ─── Temp directory cleanup (use with: trap cleanup EXIT) ─────────────────────
+# ─── Temp directory cleanup (use with: TUTORIAL_WORK_DIR=""; trap cleanup EXIT) ──
+# Callers must initialize TUTORIAL_WORK_DIR="" (clearing any inherited env value)
+# before registering the trap, and only then assign it a real mktemp -d path.
 
 cleanup() {
-  if [[ -n "${WORK_DIR:-}" ]]; then
-    rm -rf "${WORK_DIR}"
+  if [[ -n "${TUTORIAL_WORK_DIR:-}" ]]; then
+    rm -rf "${TUTORIAL_WORK_DIR}"
   fi
+  if [[ -n "${GITEA_PORT_FORWARD_PID:-}" ]]; then
+    kill "${GITEA_PORT_FORWARD_PID}" 2>/dev/null || true
+  fi
+}
+
+# ─── Flag/env resolution ──────────────────────────────────────────────────────
+
+# Usage: resolve_flag <ENV_VAR_NAME> <--flag-string> "$@"
+# Sets RESOLVED_FLAG=true/false. The CLI flag always wins over the env var.
+resolve_flag() {
+  local env_var_name="$1" flag_string="$2"
+  shift 2
+  case "${!env_var_name:-false}" in
+    true|1|yes) RESOLVED_FLAG=true ;;
+    *) RESOLVED_FLAG=false ;;
+  esac
+  for arg in "$@"; do
+    [[ "$arg" == "$flag_string" ]] && RESOLVED_FLAG=true
+  done
 }
 
 # ─── Precondition checks ─────────────────────────────────────────────────────
 
 require_cluster() {
-  if ! kubectl cluster-info --context "kind-${CLUSTER_NAME}" >/dev/null 2>&1; then
-    error "KinD cluster '${CLUSTER_NAME}' is not running."
+  if ! kubectl cluster-info >/dev/null 2>&1; then
+    error "No reachable Kubernetes cluster for the current kubectl context ($(kubectl config current-context 2>/dev/null || echo 'none'))."
     error "Please run the setup script first: ../00-setup/setup.sh"
     exit 1
   fi
 }
 
 require_gitea() {
-  if ! curl -sf "${GITEA_URL}/api/v1/version" >/dev/null 2>&1; then
-    error "Gitea is not reachable on ${GITEA_URL}."
+  curl -sf "${GITEA_URL}/api/v1/version" >/dev/null 2>&1 && return
+
+  if ! kubectl get service gitea-http -n gitea &>/dev/null; then
+    error "Gitea is not installed in this cluster."
     error "Please run the setup script first: ../00-setup/setup.sh"
     exit 1
   fi
+
+  error "Gitea is installed but not reachable at ${GITEA_URL} from this machine."
+  if [[ "${GITEA_EXPOSURE_MANAGED}" != "true" ]]; then
+    error "Start a port-forward in another terminal and leave it running for the tutorial:"
+    error "  kubectl port-forward svc/gitea-http -n gitea ${GITEA_HOST_PORT}:3000"
+  else
+    error "Check whether Gitea is still running: kubectl get pods -n gitea"
+  fi
+  exit 1
 }
 
 require_strimzi() {
@@ -55,6 +90,31 @@ require_strimzi() {
     error "Please run the setup script first: ../00-setup/setup.sh"
     exit 1
   fi
+}
+
+# ─── Gitea config persistence (cluster-side, survives across processes) ──────
+
+# Usage: save_gitea_config (writes current GITEA_URL/GITEA_EXPOSURE_MANAGED)
+save_gitea_config() {
+  kubectl create configmap gitea-tutorial-config -n gitea \
+    --from-literal=GITEA_URL="${GITEA_URL}" \
+    --from-literal=GITEA_EXPOSURE_MANAGED="${GITEA_EXPOSURE_MANAGED}" \
+    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+}
+
+# Usage: load_gitea_config (call after require_cluster; overrides GITEA_URL/
+# GITEA_EXPOSURE_MANAGED from the cluster if setup.sh has already run)
+load_gitea_config() {
+  local cm_url cm_managed
+  cm_url=$(kubectl get configmap gitea-tutorial-config -n gitea -o jsonpath='{.data.GITEA_URL}' 2>/dev/null || echo "")
+  cm_managed=$(kubectl get configmap gitea-tutorial-config -n gitea -o jsonpath='{.data.GITEA_EXPOSURE_MANAGED}' 2>/dev/null || echo "")
+  [[ -n "${cm_url}" ]] && GITEA_URL="${cm_url}"
+  [[ -n "${cm_managed}" ]] && GITEA_EXPOSURE_MANAGED="${cm_managed}"
+}
+
+# Usage: gitea_clone_url (prints the full authenticated clone URL)
+gitea_clone_url() {
+  echo "http://${GITEA_USER}:${GITEA_PASSWORD}@${GITEA_URL#http://}/${GITEA_USER}/${GITEA_REPO}.git"
 }
 
 # ─── Operational helpers ─────────────────────────────────────────────────────

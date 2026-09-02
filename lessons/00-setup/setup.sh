@@ -4,45 +4,74 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=common.sh
 source "${SCRIPT_DIR}/common.sh"
+TUTORIAL_WORK_DIR=""
+trap cleanup EXIT
+
+for arg in "$@"; do
+  case "$arg" in
+    --create-cluster) ;;
+    *)
+      error "Unknown option: $arg"
+      exit 1
+      ;;
+  esac
+done
+resolve_flag CREATE_CLUSTER --create-cluster "$@"
+CREATE_CLUSTER_MODE="$RESOLVED_FLAG"
 
 # ─── Step 1: Check prerequisites ───────────────────────────────────────────────
 
 info "Checking prerequisites..."
-for cmd in kind kubectl git curl; do
+REQUIRED_CMDS=(kubectl git curl)
+[[ "$CREATE_CLUSTER_MODE" == "true" ]] && REQUIRED_CMDS+=(kind)
+for cmd in "${REQUIRED_CMDS[@]}"; do
   if ! command -v "$cmd" &>/dev/null; then
     error "'$cmd' is required but not found in PATH."
     exit 1
   fi
 done
 
-if docker info &>/dev/null 2>&1; then
-  :
-elif podman info &>/dev/null 2>&1; then
-  :
-else
-  error "Neither Docker nor Podman is running. Please start your container runtime."
-  exit 1
+if [[ "$CREATE_CLUSTER_MODE" == "true" ]]; then
+  if docker info &>/dev/null 2>&1; then
+    :
+  elif podman info &>/dev/null 2>&1; then
+    :
+  else
+    error "Neither Docker nor Podman is running. Please start your container runtime."
+    exit 1
+  fi
 fi
 
 info "All prerequisites satisfied."
 
-# ─── Step 2: Create KinD cluster ───────────────────────────────────────────────
+# ─── Step 2: Set up the cluster ────────────────────────────────────────────────
 
-if kubectl cluster-info --context "kind-${CLUSTER_NAME}" >/dev/null 2>&1; then
-  info "KinD cluster '${CLUSTER_NAME}' already exists, skipping creation."
+if [[ "$CREATE_CLUSTER_MODE" == "true" ]]; then
+  if kubectl cluster-info --context "kind-${CLUSTER_NAME}" >/dev/null 2>&1; then
+    info "KinD cluster '${CLUSTER_NAME}' already exists, skipping creation."
+  else
+    info "Creating KinD cluster '${CLUSTER_NAME}'..."
+    kind create cluster --name "${CLUSTER_NAME}" --config "${SCRIPT_DIR}/kind-config.yaml"
+  fi
+
+  kubectl cluster-info --context "kind-${CLUSTER_NAME}" >/dev/null 2>&1
+  info "Cluster is ready."
 else
-  info "Creating KinD cluster '${CLUSTER_NAME}'..."
-  kind create cluster --name "${CLUSTER_NAME}" --config "${SCRIPT_DIR}/kind-config.yaml"
+  CURRENT_CONTEXT="$(kubectl config current-context 2>/dev/null || echo '')"
+  info "Using existing cluster (current kubectl context: ${CURRENT_CONTEXT:-none})..."
+  if ! kubectl cluster-info >/dev/null 2>&1; then
+    error "No reachable Kubernetes cluster for the current kubectl context."
+    error "Switch to the right context first (kubectl config use-context ...), or pass --create-cluster to provision a local KinD cluster."
+    exit 1
+  fi
+  info "Cluster is ready."
 fi
-
-kubectl cluster-info --context "kind-${CLUSTER_NAME}" >/dev/null 2>&1
-info "Cluster is ready."
 
 # ─── Step 3: Install ArgoCD ────────────────────────────────────────────────────
 
 info "Installing ArgoCD..."
-kubectl apply -k "${SCRIPT_DIR}/argocd" --server-side 2>/dev/null || \
-  kubectl apply -k "${SCRIPT_DIR}/argocd" --server-side
+kubectl apply -k "${ARGOCD_KUSTOMIZE_DIR}" --server-side 2>/dev/null || \
+  kubectl apply -k "${ARGOCD_KUSTOMIZE_DIR}" --server-side
 
 info "Waiting for ArgoCD to be ready (this may take a few minutes)..."
 kubectl rollout status deployment/argocd-server -n argocd --timeout=300s
@@ -74,6 +103,9 @@ for i in $(seq 1 30); do
   sleep 2
 done
 
+declare -f gitea_post_install_hook >/dev/null && gitea_post_install_hook
+save_gitea_config
+
 # ─── Step 6: Configure Gitea ───────────────────────────────────────────────────
 
 info "Configuring Gitea user and repository..."
@@ -84,9 +116,9 @@ kubectl exec -n gitea "${GITEA_POD}" -- gitea admin user create \
   --email "tutorial@example.com" \
   --must-change-password=false 2>/dev/null || true
 
-info "Waiting for Gitea to be reachable on localhost:${GITEA_HOST_PORT}..."
+info "Waiting for Gitea to be reachable at ${GITEA_URL}..."
 GITEA_READY=false
-for i in $(seq 1 60); do
+for i in $(seq 1 10); do
   if curl -sf "${GITEA_URL}/api/v1/version" >/dev/null 2>&1; then
     GITEA_READY=true
     break
@@ -94,9 +126,30 @@ for i in $(seq 1 60); do
   sleep 3
 done
 
+# BYO clusters (not --create-cluster, not already exposed downstream, e.g. via a
+# Route) have no automatic path from localhost to the Gitea NodePort. Rather than
+# require the user to have a port-forward running before setup.sh even starts,
+# start one ourselves just long enough to finish configuring Gitea (Steps 6-7)
+# — everything after that talks to Gitea in-cluster, not from this host.
+if [[ "${GITEA_READY}" != "true" && "$CREATE_CLUSTER_MODE" != "true" && "$GITEA_EXPOSURE_MANAGED" != "true" ]]; then
+  info "Gitea isn't reachable yet — starting a temporary port-forward to configure it..."
+  kubectl port-forward svc/gitea-http -n gitea "${GITEA_HOST_PORT}:3000" >/dev/null 2>&1 &
+  GITEA_PORT_FORWARD_PID=$!
+  for i in $(seq 1 20); do
+    if curl -sf "${GITEA_URL}/api/v1/version" >/dev/null 2>&1; then
+      GITEA_READY=true
+      break
+    fi
+    sleep 3
+  done
+fi
+
 if [[ "${GITEA_READY}" != "true" ]]; then
-  error "Gitea is not reachable on localhost:${GITEA_HOST_PORT} after 3 minutes."
+  error "Gitea is not reachable at ${GITEA_URL}."
   error "Check pod status: kubectl get pods -n gitea"
+  if [[ -n "${GITEA_PORT_FORWARD_PID:-}" ]]; then
+    error "A temporary port-forward was attempted and didn't help — is port ${GITEA_HOST_PORT} already in use locally by something else?"
+  fi
   exit 1
 fi
 
@@ -132,15 +185,14 @@ fi
 
 info "Seeding Gitea repository with base manifests..."
 
-WORK_DIR=$(mktemp -d)
-trap cleanup EXIT
+TUTORIAL_WORK_DIR=$(mktemp -d)
 
-git clone "http://${GITEA_USER}:${GITEA_PASSWORD}@localhost:${GITEA_HOST_PORT}/${GITEA_USER}/${GITEA_REPO}.git" "${WORK_DIR}/repo" 2>/dev/null
+git clone "$(gitea_clone_url)" "${TUTORIAL_WORK_DIR}/repo" 2>/dev/null
 
-mkdir -p "${WORK_DIR}/repo/manifests"
-cp "${SCRIPT_DIR}/base-manifests/"* "${WORK_DIR}/repo/manifests/"
+mkdir -p "${TUTORIAL_WORK_DIR}/repo/manifests"
+cp "${SCRIPT_DIR}/base-manifests/"* "${TUTORIAL_WORK_DIR}/repo/manifests/"
 
-pushd "${WORK_DIR}/repo" >/dev/null
+pushd "${TUTORIAL_WORK_DIR}/repo" >/dev/null
 git add .
 if git diff --cached --quiet; then
   info "Manifests already present in Gitea repo, skipping commit."
@@ -150,6 +202,13 @@ else
   info "Manifests pushed to Gitea."
 fi
 popd >/dev/null
+
+if [[ -n "${GITEA_PORT_FORWARD_PID:-}" ]]; then
+  info "Stopping temporary port-forward..."
+  kill "${GITEA_PORT_FORWARD_PID}" 2>/dev/null || true
+  wait "${GITEA_PORT_FORWARD_PID}" 2>/dev/null || true
+  GITEA_PORT_FORWARD_PID=""
+fi
 
 # ─── Step 8: Configure ArgoCD to access Gitea ─────────────────────────────────
 
@@ -188,6 +247,16 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 info "Setup complete! Your tutorial environment is ready."
 echo ""
+if [[ "$CREATE_CLUSTER_MODE" != "true" ]]; then
+  echo "  This is running against your existing cluster's current kubectl context."
+  if [[ "$GITEA_EXPOSURE_MANAGED" != "true" ]]; then
+    echo "  Keep Gitea reachable at ${GITEA_URL} for the whole tutorial, e.g.:"
+    echo "     kubectl port-forward svc/gitea-http -n gitea ${GITEA_HOST_PORT}:3000"
+  else
+    echo "  Gitea is reachable at ${GITEA_URL}."
+  fi
+  echo ""
+fi
 echo "  Next step: run the prep script for the lesson you want to start:"
 echo "     cd ../01-lesson-1 && ./prep.sh"
 echo ""
@@ -197,7 +266,12 @@ echo "     URL:      https://localhost:8080"
 echo "     Username: admin"
 echo "     Password: ${ARGOCD_PASSWORD}"
 echo ""
-echo "  Cleanup when done with all lessons:"
-echo "     ./teardown.sh"
+if [[ "$CREATE_CLUSTER_MODE" == "true" ]]; then
+  echo "  Cleanup when done with all lessons:"
+  echo "     ./teardown.sh --delete-cluster"
+else
+  echo "  Cleanup when done with all lessons:"
+  echo "     ./teardown.sh"
+fi
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

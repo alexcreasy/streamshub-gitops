@@ -58,9 +58,11 @@ You can re-run `./prep.sh` at any time to reset back to the lesson starting stat
 
 ### Clone the repository
 
+When you ran the `./prep.sh` script, it printed the exact `git clone` command to use (the Gitea address can vary depending on how your cluster exposes it), run that command, it will follow the below format:
+
 ```bash
-git clone http://tutorial-user:tutorial-password@localhost:3001/tutorial-user/streamshub-gitops.git /tmp/gitops-lesson-2
-cd /tmp/gitops-lesson-2
+git clone <external address of gitea server> /tmp/gitops-lesson-1
+cd /tmp/gitops-lesson-1
 ```
 
 ### Check what's running in each environment
