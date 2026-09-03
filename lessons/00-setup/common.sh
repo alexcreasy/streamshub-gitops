@@ -9,6 +9,7 @@ GITEA_PASSWORD="tutorial-password"
 GITEA_REPO="streamshub-gitops"
 GITEA_HOST_PORT=3001
 GITEA_URL="http://localhost:${GITEA_HOST_PORT}"
+GITEA_EXPOSURE_MANAGED=false
 
 KAFKA_CLUSTER_NAME="my-cluster"
 KAFKA_NAMESPACE="kafka-tutorial"
@@ -71,6 +72,31 @@ require_strimzi() {
     error "Please run the setup script first: ../00-setup/setup.sh"
     exit 1
   fi
+}
+
+# ─── Gitea config persistence (cluster-side, survives across processes) ──────
+
+# Usage: save_gitea_config (writes current GITEA_URL/GITEA_EXPOSURE_MANAGED)
+save_gitea_config() {
+  kubectl create configmap gitea-tutorial-config -n gitea \
+    --from-literal=GITEA_URL="${GITEA_URL}" \
+    --from-literal=GITEA_EXPOSURE_MANAGED="${GITEA_EXPOSURE_MANAGED}" \
+    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+}
+
+# Usage: load_gitea_config (call after require_cluster; overrides GITEA_URL/
+# GITEA_EXPOSURE_MANAGED from the cluster if setup.sh has already run)
+load_gitea_config() {
+  local cm_url cm_managed
+  cm_url=$(kubectl get configmap gitea-tutorial-config -n gitea -o jsonpath='{.data.GITEA_URL}' 2>/dev/null || echo "")
+  cm_managed=$(kubectl get configmap gitea-tutorial-config -n gitea -o jsonpath='{.data.GITEA_EXPOSURE_MANAGED}' 2>/dev/null || echo "")
+  [[ -n "${cm_url}" ]] && GITEA_URL="${cm_url}"
+  [[ -n "${cm_managed}" ]] && GITEA_EXPOSURE_MANAGED="${cm_managed}"
+}
+
+# Usage: gitea_clone_url (prints the full authenticated clone URL)
+gitea_clone_url() {
+  echo "http://${GITEA_USER}:${GITEA_PASSWORD}@${GITEA_URL#http://}/${GITEA_USER}/${GITEA_REPO}.git"
 }
 
 # ─── Operational helpers ─────────────────────────────────────────────────────

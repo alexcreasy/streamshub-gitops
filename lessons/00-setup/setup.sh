@@ -67,12 +67,10 @@ fi
 
 # ─── Step 3: Install ArgoCD ────────────────────────────────────────────────────
 
-if kubectl get --raw /apis/security.openshift.io/v1 >/dev/null 2>&1; then
-  info "OpenShift cluster detected."
-  ARGOCD_KUSTOMIZE_DIR="${SCRIPT_DIR}/argocd-openshift"
-else
-  ARGOCD_KUSTOMIZE_DIR="${SCRIPT_DIR}/argocd"
-fi
+ARGOCD_KUSTOMIZE_DIR="${SCRIPT_DIR}/argocd"
+
+# ─── Extension point: downstream/platform-specific setup ──────────────────────
+[[ -f "${SCRIPT_DIR}/downstream/downstream-setup.sh" ]] && source "${SCRIPT_DIR}/downstream/downstream-setup.sh"
 
 info "Installing ArgoCD..."
 kubectl apply -k "${ARGOCD_KUSTOMIZE_DIR}" --server-side 2>/dev/null || \
@@ -108,6 +106,9 @@ for i in $(seq 1 30); do
   sleep 2
 done
 
+declare -f downstream_configure_gitea >/dev/null && downstream_configure_gitea
+save_gitea_config
+
 # ─── Step 6: Configure Gitea ───────────────────────────────────────────────────
 
 info "Configuring Gitea user and repository..."
@@ -118,7 +119,7 @@ kubectl exec -n gitea "${GITEA_POD}" -- gitea admin user create \
   --email "tutorial@example.com" \
   --must-change-password=false 2>/dev/null || true
 
-info "Waiting for Gitea to be reachable on localhost:${GITEA_HOST_PORT}..."
+info "Waiting for Gitea to be reachable at ${GITEA_URL}..."
 GITEA_READY=false
 for i in $(seq 1 60); do
   if curl -sf "${GITEA_URL}/api/v1/version" >/dev/null 2>&1; then
@@ -129,11 +130,11 @@ for i in $(seq 1 60); do
 done
 
 if [[ "${GITEA_READY}" != "true" ]]; then
-  error "Gitea is not reachable on localhost:${GITEA_HOST_PORT} after 3 minutes."
+  error "Gitea is not reachable at ${GITEA_URL} after 3 minutes."
   error "Check pod status: kubectl get pods -n gitea"
-  if [[ "$CREATE_CLUSTER_MODE" != "true" ]]; then
+  if [[ "$CREATE_CLUSTER_MODE" != "true" && "$GITEA_EXPOSURE_MANAGED" != "true" ]]; then
     error "When not using --create-cluster, you're responsible for exposing the"
-    error "'gitea-http' Service (NodePort 30003) at localhost:${GITEA_HOST_PORT} yourself,"
+    error "'gitea-http' Service (NodePort 30003) at ${GITEA_URL} yourself,"
     error "e.g. by leaving this running in another terminal for the whole tutorial:"
     error "  kubectl port-forward svc/gitea-http -n gitea ${GITEA_HOST_PORT}:3000"
   fi
@@ -175,7 +176,7 @@ info "Seeding Gitea repository with base manifests..."
 WORK_DIR=$(mktemp -d)
 trap cleanup EXIT
 
-git clone "http://${GITEA_USER}:${GITEA_PASSWORD}@localhost:${GITEA_HOST_PORT}/${GITEA_USER}/${GITEA_REPO}.git" "${WORK_DIR}/repo" 2>/dev/null
+git clone "$(gitea_clone_url)" "${WORK_DIR}/repo" 2>/dev/null
 
 mkdir -p "${WORK_DIR}/repo/manifests"
 cp "${SCRIPT_DIR}/base-manifests/"* "${WORK_DIR}/repo/manifests/"
@@ -230,8 +231,12 @@ info "Setup complete! Your tutorial environment is ready."
 echo ""
 if [[ "$CREATE_CLUSTER_MODE" != "true" ]]; then
   echo "  This is running against your existing cluster's current kubectl context."
-  echo "  Keep Gitea reachable at ${GITEA_URL} for the whole tutorial, e.g.:"
-  echo "     kubectl port-forward svc/gitea-http -n gitea ${GITEA_HOST_PORT}:3000"
+  if [[ "$GITEA_EXPOSURE_MANAGED" != "true" ]]; then
+    echo "  Keep Gitea reachable at ${GITEA_URL} for the whole tutorial, e.g.:"
+    echo "     kubectl port-forward svc/gitea-http -n gitea ${GITEA_HOST_PORT}:3000"
+  else
+    echo "  Gitea is reachable at ${GITEA_URL}."
+  fi
   echo ""
 fi
 echo "  Next step: run the prep script for the lesson you want to start:"

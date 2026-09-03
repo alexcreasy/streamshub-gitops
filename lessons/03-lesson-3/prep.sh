@@ -9,6 +9,7 @@ source "${SCRIPT_DIR}/../00-setup/common.sh"
 
 info "Validating tutorial infrastructure..."
 require_cluster
+load_gitea_config
 require_strimzi
 require_gitea
 info "Infrastructure checks passed."
@@ -40,7 +41,7 @@ info "Resetting Gitea repository to lesson-3 starting state..."
 WORK_DIR=$(mktemp -d)
 trap cleanup EXIT
 
-git clone "http://${GITEA_USER}:${GITEA_PASSWORD}@localhost:${GITEA_HOST_PORT}/${GITEA_USER}/${GITEA_REPO}.git" "${WORK_DIR}/repo" 2>/dev/null
+git clone "$(gitea_clone_url)" "${WORK_DIR}/repo" 2>/dev/null
 
 rm -rf "${WORK_DIR}/repo/manifests"
 mkdir -p "${WORK_DIR}/repo/manifests"
@@ -91,7 +92,7 @@ echo ""
 info "Lesson 3 is ready. Open README.md and follow the lesson steps."
 echo ""
 echo "  Clone the repo to follow along:"
-echo "     git clone http://${GITEA_USER}:${GITEA_PASSWORD}@localhost:${GITEA_HOST_PORT}/${GITEA_USER}/${GITEA_REPO}.git /tmp/gitops-lesson-3"
+echo "     git clone $(gitea_clone_url) /tmp/gitops-lesson-3"
 echo ""
 echo "  Gitea (your Git server):  ${GITEA_URL}"
 echo "  Username: ${GITEA_USER}   Password: ${GITEA_PASSWORD}"

@@ -47,7 +47,7 @@ When the script finishes, it prints the ArgoCD admin password and tells you whic
 
 ## Using an existing cluster
 
-If you already have a Kubernetes cluster (KinD set up differently, minikube, k3d, OpenShift, a remote cluster, etc.), you can skip local cluster provisioning entirely. This is the **default** behavior — running `./setup.sh` with no flags installs ArgoCD, Strimzi, and Gitea onto whatever `kubectl`'s current context points at, instead of creating a KinD cluster:
+If you already have a Kubernetes cluster (KinD set up differently, minikube, k3d, a remote cluster, etc.), you can skip local cluster provisioning entirely. This is the **default** behavior — running `./setup.sh` with no flags installs ArgoCD, Strimzi, and Gitea onto whatever `kubectl`'s current context points at, instead of creating a KinD cluster:
 
 ```bash
 kubectl config use-context <your-context>
@@ -60,11 +60,15 @@ Things to know when using an existing cluster:
 
 * **The cluster is assumed to be dedicated to this tutorial.** Setup doesn't check for or try to coexist with a pre-existing ArgoCD/Strimzi/Gitea install.
 * **You need cluster-admin rights**, since setup installs cluster-scoped resources (CRDs, ClusterRoleBindings) for Strimzi and ArgoCD.
-* **You are responsible for making Gitea reachable at `http://localhost:3001` for the whole tutorial** (not just while `setup.sh` runs) — every lesson clones from and pushes to that address. If your cluster doesn't otherwise expose NodePort `30003` there, leave a port-forward running in another terminal for the duration of the tutorial:
+* **You are responsible for making Gitea reachable for the whole tutorial** (not just while `setup.sh` runs) — every lesson clones from and pushes to it. By default this means `http://localhost:3001`; if your cluster doesn't otherwise expose NodePort `30003` there, leave a port-forward running in another terminal for the duration of the tutorial:
 
   ```bash
   kubectl port-forward svc/gitea-http -n gitea 3001:3000
   ```
+
+  `setup.sh` and every lesson's `prep.sh` always print the Gitea address they actually used — trust that output over any address written down here.
+
+* **This tutorial targets plain Kubernetes.** It does not currently work out of the box against OpenShift (ArgoCD's Redis component fails OpenShift's default restricted SCC).
 
 ---
 

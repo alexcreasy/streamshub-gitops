@@ -49,10 +49,10 @@ Before you make any changes, take a moment to explore the environment. This is w
 
 ### Clone the repository
 
-The Gitea server is running inside the cluster and is exposed on port 3001. Clone the repository it holds:
+The Gitea server is running inside the cluster. `./prep.sh` printed the exact `git clone` command to use (the Gitea address can vary depending on how your cluster exposes it) — copy that command, or run it again here:
 
 ```bash
-git clone http://tutorial-user:tutorial-password@localhost:3001/tutorial-user/streamshub-gitops.git /tmp/gitops-lesson-1
+git clone <clone command printed by prep.sh> /tmp/gitops-lesson-1
 cd /tmp/gitops-lesson-1
 ```
 
