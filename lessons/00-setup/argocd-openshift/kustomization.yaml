@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../argocd
+
+# Upstream ArgoCD hardcodes `runAsUser: 999` on argocd-redis, matching the
+# UID baked into the redis image. OpenShift's default restricted-v2/v3 SCCs
+# reject any pod that requests a fixed UID outside the namespace's allocated
+# range, and argocd-redis isn't bound to a more permissive SCC. Dropping
+# runAsUser lets OpenShift auto-assign a UID from that range instead.
+patches:
+  - path: redis-scc-patch.yaml
+    target:
+      kind: Deployment
+      name: argocd-redis

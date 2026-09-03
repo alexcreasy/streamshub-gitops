@@ -67,9 +67,16 @@ fi
 
 # ─── Step 3: Install ArgoCD ────────────────────────────────────────────────────
 
+if kubectl get --raw /apis/security.openshift.io/v1 >/dev/null 2>&1; then
+  info "OpenShift cluster detected."
+  ARGOCD_KUSTOMIZE_DIR="${SCRIPT_DIR}/argocd-openshift"
+else
+  ARGOCD_KUSTOMIZE_DIR="${SCRIPT_DIR}/argocd"
+fi
+
 info "Installing ArgoCD..."
-kubectl apply -k "${SCRIPT_DIR}/argocd" --server-side 2>/dev/null || \
-  kubectl apply -k "${SCRIPT_DIR}/argocd" --server-side
+kubectl apply -k "${ARGOCD_KUSTOMIZE_DIR}" --server-side 2>/dev/null || \
+  kubectl apply -k "${ARGOCD_KUSTOMIZE_DIR}" --server-side
 
 info "Waiting for ArgoCD to be ready (this may take a few minutes)..."
 kubectl rollout status deployment/argocd-server -n argocd --timeout=300s
