@@ -118,30 +118,8 @@ kubectl exec -n gitea "${GITEA_POD}" -- gitea admin user create \
   --email "tutorial@example.com" \
   --must-change-password=false 2>/dev/null || true
 
-info "Waiting for Gitea to be reachable on localhost:${GITEA_HOST_PORT}..."
-GITEA_READY=false
-for i in $(seq 1 60); do
-  if curl -sf "${GITEA_URL}/api/v1/version" >/dev/null 2>&1; then
-    GITEA_READY=true
-    break
-  fi
-  sleep 3
-done
-
-if [[ "${GITEA_READY}" != "true" ]]; then
-  error "Gitea is not reachable on localhost:${GITEA_HOST_PORT} after 3 minutes."
-  error "Check pod status: kubectl get pods -n gitea"
-  if [[ "$CREATE_CLUSTER_MODE" != "true" ]]; then
-    error "When not using --create-cluster, you're responsible for exposing the"
-    error "'gitea-http' Service (NodePort 30003) at localhost:${GITEA_HOST_PORT} yourself,"
-    error "e.g. by leaving this running in another terminal for the whole tutorial:"
-    error "  kubectl port-forward svc/gitea-http -n gitea ${GITEA_HOST_PORT}:3000"
-  fi
-  exit 1
-fi
-
-TOKEN_RESPONSE=$(curl -sf -X POST \
-  "${GITEA_URL}/api/v1/users/${GITEA_USER}/tokens" \
+TOKEN_RESPONSE=$(kubectl exec -n gitea "${GITEA_POD}" -- curl -sf -X POST \
+  "http://localhost:3000/api/v1/users/${GITEA_USER}/tokens" \
   -u "${GITEA_USER}:${GITEA_PASSWORD}" \
   -H "Content-Type: application/json" \
   -d '{"name":"setup-token","scopes":["all"]}' 2>/dev/null || echo "{}")
@@ -154,8 +132,8 @@ if [[ -z "${TOKEN}" ]]; then
   exit 1
 fi
 
-HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" -X POST \
-  "${GITEA_URL}/api/v1/user/repos" \
+HTTP_CODE=$(kubectl exec -n gitea "${GITEA_POD}" -- curl -sf -o /dev/null -w "%{http_code}" -X POST \
+  "http://localhost:3000/api/v1/user/repos" \
   -H "Authorization: token ${TOKEN}" \
   -H "Content-Type: application/json" \
   -d "{\"name\":\"${GITEA_REPO}\",\"auto_init\":true,\"default_branch\":\"main\"}" 2>/dev/null || echo "000")
@@ -171,25 +149,8 @@ fi
 # ─── Step 7: Seed the Gitea repository with base manifests ────────────────────
 
 info "Seeding Gitea repository with base manifests..."
-
-WORK_DIR=$(mktemp -d)
-trap cleanup EXIT
-
-git clone "http://${GITEA_USER}:${GITEA_PASSWORD}@localhost:${GITEA_HOST_PORT}/${GITEA_USER}/${GITEA_REPO}.git" "${WORK_DIR}/repo" 2>/dev/null
-
-mkdir -p "${WORK_DIR}/repo/manifests"
-cp "${SCRIPT_DIR}/base-manifests/"* "${WORK_DIR}/repo/manifests/"
-
-pushd "${WORK_DIR}/repo" >/dev/null
-git add .
-if git diff --cached --quiet; then
-  info "Manifests already present in Gitea repo, skipping commit."
-else
-  git -c user.name="Tutorial Setup" -c user.email="setup@tutorial.local" commit -m "Initial tutorial manifests"
-  git push
-  info "Manifests pushed to Gitea."
-fi
-popd >/dev/null
+seed_gitea_repo "${SCRIPT_DIR}/base-manifests" "Initial tutorial manifests"
+info "Manifests pushed to Gitea."
 
 # ─── Step 8: Configure ArgoCD to access Gitea ─────────────────────────────────
 
@@ -230,8 +191,11 @@ info "Setup complete! Your tutorial environment is ready."
 echo ""
 if [[ "$CREATE_CLUSTER_MODE" != "true" ]]; then
   echo "  This is running against your existing cluster's current kubectl context."
-  echo "  Keep Gitea reachable at ${GITEA_URL} for the whole tutorial, e.g.:"
+  echo "  Setup itself didn't need Gitea exposed outside the cluster, but once you"
+  echo "  start cloning/pushing from your own machine during a lesson, you will."
+  echo "  Leave this running in another terminal for the rest of the tutorial:"
   echo "     kubectl port-forward svc/gitea-http -n gitea ${GITEA_HOST_PORT}:3000"
+  echo "  Then Gitea will be reachable at ${GITEA_URL}"
   echo ""
 fi
 echo "  Next step: run the prep script for the lesson you want to start:"

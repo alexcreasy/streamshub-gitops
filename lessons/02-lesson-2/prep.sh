@@ -40,26 +40,9 @@ info "Previous lesson state cleaned up."
 
 info "Resetting Gitea repository to lesson-2 starting state..."
 
-WORK_DIR=$(mktemp -d)
-trap cleanup EXIT
-
-git clone "http://${GITEA_USER}:${GITEA_PASSWORD}@localhost:${GITEA_HOST_PORT}/${GITEA_USER}/${GITEA_REPO}.git" "${WORK_DIR}/repo" 2>/dev/null
-
-rm -rf "${WORK_DIR}/repo/manifests"
-mkdir -p "${WORK_DIR}/repo/manifests"
-cp -r "${SCRIPT_DIR}/lesson-manifests/." "${WORK_DIR}/repo/manifests/"
-
-pushd "${WORK_DIR}/repo" >/dev/null
-git add .
-if git diff --cached --quiet; then
-  info "Gitea repo is already in lesson-2 starting state, skipping commit."
-else
-  git -c user.name="Tutorial Setup" -c user.email="setup@tutorial.local" commit -m "Reset to lesson-2 starting state"
-  git push
-  info "Lesson-2 starting state pushed to Gitea."
-fi
-TARGET_REVISION=$(git rev-parse HEAD)
-popd >/dev/null
+seed_gitea_repo "${SCRIPT_DIR}/lesson-manifests" "Reset to lesson-2 starting state"
+TARGET_REVISION="${GITEA_REPO_REVISION}"
+info "Lesson-2 starting state pushed to Gitea."
 
 # ─── Step 4: Create ArgoCD Applications for staging and production ─────────────
 

@@ -58,8 +58,8 @@ require_cluster() {
 }
 
 require_gitea() {
-  if ! curl -sf "${GITEA_URL}/api/v1/version" >/dev/null 2>&1; then
-    error "Gitea is not reachable on ${GITEA_URL}."
+  if ! kubectl get deployment gitea -n gitea &>/dev/null; then
+    error "Gitea not found in namespace 'gitea'."
     error "Please run the setup script first: ../00-setup/setup.sh"
     exit 1
   fi
@@ -74,6 +74,43 @@ require_strimzi() {
 }
 
 # ─── Operational helpers ─────────────────────────────────────────────────────
+
+gitea_pod() {
+  kubectl get pods -n gitea -l app=gitea -o jsonpath='{.items[0].metadata.name}'
+}
+
+# Usage: seed_gitea_repo <local-manifests-dir> <commit-message>
+# Replaces the tutorial repo's manifests/ directory with the contents of
+# <local-manifests-dir> and commits+pushes if anything changed. Runs
+# entirely via `kubectl exec`/`kubectl cp` against the Gitea pod's own
+# localhost:3000, so it never needs Gitea exposed outside the cluster.
+# Sets GITEA_REPO_REVISION to the resulting HEAD commit SHA.
+seed_gitea_repo() {
+  local local_dir="$1" commit_msg="$2"
+  local pod remote_seed="/tmp/gitea-seed" remote_repo="/tmp/gitea-seed-repo"
+
+  pod="$(gitea_pod)"
+
+  kubectl exec -n gitea "${pod}" -- rm -rf "${remote_seed}" "${remote_repo}"
+  kubectl cp "${local_dir}" "${pod}:${remote_seed}" -n gitea
+
+  GITEA_REPO_REVISION=$(kubectl exec -n gitea "${pod}" -- sh -c "
+    set -e
+    git clone -q 'http://${GITEA_USER}:${GITEA_PASSWORD}@localhost:3000/${GITEA_USER}/${GITEA_REPO}.git' '${remote_repo}'
+    rm -rf '${remote_repo}/manifests'
+    mkdir -p '${remote_repo}/manifests'
+    cp -r '${remote_seed}/.' '${remote_repo}/manifests/'
+    cd '${remote_repo}'
+    git add .
+    if ! git diff --cached --quiet; then
+      git -c user.name='Tutorial Setup' -c user.email='setup@tutorial.local' commit -q -m '${commit_msg}'
+      git push -q
+    fi
+    git rev-parse HEAD
+  ")
+
+  kubectl exec -n gitea "${pod}" -- rm -rf "${remote_seed}" "${remote_repo}"
+}
 
 # Usage: remove_strimzi_finalizers <namespace> [<namespace> ...]
 remove_strimzi_finalizers() {
