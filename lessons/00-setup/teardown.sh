@@ -26,18 +26,30 @@ else
   info "(Pass --delete-cluster instead if this cluster was created with 'setup.sh --create-cluster'.)"
 
   kubectl delete application "${KAFKA_NAMESPACE}" "${KAFKA_STAGING_NAMESPACE}" "${KAFKA_PRODUCTION_NAMESPACE}" \
-    -n argocd --ignore-not-found 2>/dev/null || true
+    -n argocd --ignore-not-found || true
 
   kubectl delete namespace "${KAFKA_NAMESPACE}" "${KAFKA_STAGING_NAMESPACE}" "${KAFKA_PRODUCTION_NAMESPACE}" \
-    --ignore-not-found --wait=false 2>/dev/null || true
+    --ignore-not-found --wait=false || true
   remove_strimzi_finalizers "${KAFKA_NAMESPACE}" "${KAFKA_STAGING_NAMESPACE}" "${KAFKA_PRODUCTION_NAMESPACE}"
   for ns in "${KAFKA_NAMESPACE}" "${KAFKA_STAGING_NAMESPACE}" "${KAFKA_PRODUCTION_NAMESPACE}"; do
     kubectl wait --for=delete "namespace/${ns}" --timeout=120s 2>/dev/null || true
   done
 
-  kubectl delete -k "${SCRIPT_DIR}/gitea" --ignore-not-found 2>/dev/null || true
-  kubectl delete -k "${SCRIPT_DIR}/strimzi" --ignore-not-found 2>/dev/null || true
-  kubectl delete -k "${SCRIPT_DIR}/argocd" --ignore-not-found 2>/dev/null || true
+  kubectl delete -k "${SCRIPT_DIR}/gitea" --ignore-not-found || true
+  kubectl delete -k "${SCRIPT_DIR}/strimzi" --ignore-not-found || true
+  kubectl delete -k "${SCRIPT_DIR}/argocd" --ignore-not-found || true
+
+  REMAINING=""
+  for ns in "${KAFKA_NAMESPACE}" "${KAFKA_STAGING_NAMESPACE}" "${KAFKA_PRODUCTION_NAMESPACE}" gitea strimzi-operator argocd; do
+    kubectl get namespace "${ns}" &>/dev/null && REMAINING="${REMAINING} ${ns}"
+  done
+
+  if [[ -n "${REMAINING}" ]]; then
+    warn "These namespaces are still present:${REMAINING}"
+    warn "A kubectl command likely failed partway through (e.g. a dropped connection) —"
+    warn "check your connection to the cluster and re-run ./teardown.sh."
+    exit 1
+  fi
 
   info "Done. Tutorial resources have been removed; the cluster itself was left running."
 fi
