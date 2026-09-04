@@ -62,11 +62,22 @@ require_cluster() {
 }
 
 require_gitea() {
-  if ! curl -sf "${GITEA_URL}/api/v1/version" >/dev/null 2>&1; then
-    error "Gitea is not reachable on ${GITEA_URL}."
+  curl -sf "${GITEA_URL}/api/v1/version" >/dev/null 2>&1 && return
+
+  if ! kubectl get service gitea-http -n gitea &>/dev/null; then
+    error "Gitea is not installed in this cluster."
     error "Please run the setup script first: ../00-setup/setup.sh"
     exit 1
   fi
+
+  error "Gitea is installed but not reachable at ${GITEA_URL} from this machine."
+  if [[ "${GITEA_EXPOSURE_MANAGED}" != "true" ]]; then
+    error "Start a port-forward in another terminal and leave it running for the tutorial:"
+    error "  kubectl port-forward svc/gitea-http -n gitea ${GITEA_HOST_PORT}:3000"
+  else
+    error "Check whether Gitea is still running: kubectl get pods -n gitea"
+  fi
+  exit 1
 }
 
 require_strimzi() {
