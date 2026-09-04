@@ -30,6 +30,9 @@ cleanup() {
   if [[ -n "${WORK_DIR:-}" ]]; then
     rm -rf "${WORK_DIR}"
   fi
+  if [[ -n "${GITEA_PORT_FORWARD_PID:-}" ]]; then
+    kill "${GITEA_PORT_FORWARD_PID}" 2>/dev/null || true
+  fi
 }
 
 # ─── Flag/env resolution ──────────────────────────────────────────────────────

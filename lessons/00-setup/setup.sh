@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=common.sh
 source "${SCRIPT_DIR}/common.sh"
+trap cleanup EXIT
 
 for arg in "$@"; do
   case "$arg" in
@@ -70,7 +71,7 @@ fi
 ARGOCD_KUSTOMIZE_DIR="${SCRIPT_DIR}/argocd"
 
 # ─── Extension point: downstream/platform-specific setup ──────────────────────
-[[ -f "${SCRIPT_DIR}/downstream/downstream-setup.sh" ]] && source "${SCRIPT_DIR}/downstream/downstream-setup.sh"
+#[[ -f "${SCRIPT_DIR}/downstream/downstream-setup.sh" ]] && source "${SCRIPT_DIR}/downstream/downstream-setup.sh"
 
 info "Installing ArgoCD..."
 kubectl apply -k "${ARGOCD_KUSTOMIZE_DIR}" --server-side 2>/dev/null || \
@@ -121,7 +122,7 @@ kubectl exec -n gitea "${GITEA_POD}" -- gitea admin user create \
 
 info "Waiting for Gitea to be reachable at ${GITEA_URL}..."
 GITEA_READY=false
-for i in $(seq 1 60); do
+for i in $(seq 1 10); do
   if curl -sf "${GITEA_URL}/api/v1/version" >/dev/null 2>&1; then
     GITEA_READY=true
     break
@@ -129,14 +130,29 @@ for i in $(seq 1 60); do
   sleep 3
 done
 
+# BYO clusters (not --create-cluster, not already exposed downstream, e.g. via a
+# Route) have no automatic path from localhost to the Gitea NodePort. Rather than
+# require the user to have a port-forward running before setup.sh even starts,
+# start one ourselves just long enough to finish configuring Gitea (Steps 6-7)
+# — everything after that talks to Gitea in-cluster, not from this host.
+if [[ "${GITEA_READY}" != "true" && "$CREATE_CLUSTER_MODE" != "true" && "$GITEA_EXPOSURE_MANAGED" != "true" ]]; then
+  info "Gitea isn't reachable yet — starting a temporary port-forward to configure it..."
+  kubectl port-forward svc/gitea-http -n gitea "${GITEA_HOST_PORT}:3000" >/dev/null 2>&1 &
+  GITEA_PORT_FORWARD_PID=$!
+  for i in $(seq 1 20); do
+    if curl -sf "${GITEA_URL}/api/v1/version" >/dev/null 2>&1; then
+      GITEA_READY=true
+      break
+    fi
+    sleep 3
+  done
+fi
+
 if [[ "${GITEA_READY}" != "true" ]]; then
-  error "Gitea is not reachable at ${GITEA_URL} after 3 minutes."
+  error "Gitea is not reachable at ${GITEA_URL}."
   error "Check pod status: kubectl get pods -n gitea"
-  if [[ "$CREATE_CLUSTER_MODE" != "true" && "$GITEA_EXPOSURE_MANAGED" != "true" ]]; then
-    error "When not using --create-cluster, you're responsible for exposing the"
-    error "'gitea-http' Service (NodePort 30003) at ${GITEA_URL} yourself,"
-    error "e.g. by leaving this running in another terminal for the whole tutorial:"
-    error "  kubectl port-forward svc/gitea-http -n gitea ${GITEA_HOST_PORT}:3000"
+  if [[ -n "${GITEA_PORT_FORWARD_PID:-}" ]]; then
+    error "A temporary port-forward was attempted and didn't help — is port ${GITEA_HOST_PORT} already in use locally by something else?"
   fi
   exit 1
 fi
@@ -174,7 +190,6 @@ fi
 info "Seeding Gitea repository with base manifests..."
 
 WORK_DIR=$(mktemp -d)
-trap cleanup EXIT
 
 git clone "$(gitea_clone_url)" "${WORK_DIR}/repo" 2>/dev/null
 
@@ -191,6 +206,13 @@ else
   info "Manifests pushed to Gitea."
 fi
 popd >/dev/null
+
+if [[ -n "${GITEA_PORT_FORWARD_PID:-}" ]]; then
+  info "Stopping temporary port-forward..."
+  kill "${GITEA_PORT_FORWARD_PID}" 2>/dev/null || true
+  wait "${GITEA_PORT_FORWARD_PID}" 2>/dev/null || true
+  GITEA_PORT_FORWARD_PID=""
+fi
 
 # ─── Step 8: Configure ArgoCD to access Gitea ─────────────────────────────────
 

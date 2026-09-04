@@ -60,7 +60,7 @@ Things to know when using an existing cluster:
 
 * **The cluster is assumed to be dedicated to this tutorial.** Setup doesn't check for or try to coexist with a pre-existing ArgoCD/Strimzi/Gitea install.
 * **You need cluster-admin rights**, since setup installs cluster-scoped resources (CRDs, ClusterRoleBindings) for Strimzi and ArgoCD.
-* **You are responsible for making Gitea reachable for the whole tutorial** (not just while `setup.sh` runs) — every lesson clones from and pushes to it. By default this means `http://localhost:3001`; if your cluster doesn't otherwise expose NodePort `30003` there, leave a port-forward running in another terminal for the duration of the tutorial:
+* **You are responsible for making Gitea reachable for each lesson.** `setup.sh` itself doesn't need you to do anything — if it can't reach Gitea directly, it starts its own temporary port-forward just long enough to finish configuring it, then tears it down. But from then on (running `prep.sh`, following a lesson), you're on your own: by default this means `http://localhost:3001`; if your cluster doesn't otherwise expose NodePort `30003` there, leave a port-forward running in another terminal for the duration of the tutorial:
 
   ```bash
   kubectl port-forward svc/gitea-http -n gitea 3001:3000
