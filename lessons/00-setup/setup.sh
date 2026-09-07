@@ -4,6 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=common.sh
 source "${SCRIPT_DIR}/common.sh"
+# shellcheck source=downstream-setup.sh
+source "${SCRIPT_DIR}/downstream/downstream-setup.sh"
 trap cleanup EXIT
 
 for arg in "$@"; do
@@ -68,11 +70,6 @@ fi
 
 # ─── Step 3: Install ArgoCD ────────────────────────────────────────────────────
 
-ARGOCD_KUSTOMIZE_DIR="${SCRIPT_DIR}/argocd"
-
-# ─── Extension point: downstream/platform-specific setup ──────────────────────
-#[[ -f "${SCRIPT_DIR}/downstream/downstream-setup.sh" ]] && source "${SCRIPT_DIR}/downstream/downstream-setup.sh"
-
 info "Installing ArgoCD..."
 kubectl apply -k "${ARGOCD_KUSTOMIZE_DIR}" --server-side 2>/dev/null || \
   kubectl apply -k "${ARGOCD_KUSTOMIZE_DIR}" --server-side
@@ -107,7 +104,7 @@ for i in $(seq 1 30); do
   sleep 2
 done
 
-declare -f downstream_configure_gitea >/dev/null && downstream_configure_gitea
+declare -f gitea_post_install_hook >/dev/null && gitea_post_install_hook
 save_gitea_config
 
 # ─── Step 6: Configure Gitea ───────────────────────────────────────────────────

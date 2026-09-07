@@ -5,7 +5,7 @@
 
 ARGOCD_KUSTOMIZE_DIR="${SCRIPT_DIR}/downstream/argocd-openshift"
 
-downstream_configure_gitea() {
+gitea_post_install_hook() {
   info "Exposing Gitea via an OpenShift Route..."
   kubectl apply -k "${SCRIPT_DIR}/downstream/gitea-openshift"
 
