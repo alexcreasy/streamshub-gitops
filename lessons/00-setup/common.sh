@@ -92,6 +92,21 @@ require_strimzi() {
   fi
 }
 
+# Usage: namespace_gone <ns> — 0 if confirmed deleted, 1 if still present.
+# A failed `kubectl get` is ambiguous (NotFound vs. a dropped connection), so
+# this checks cluster reachability before concluding "gone" — otherwise a
+# lost connection mid-teardown would look identical to a successful deletion.
+namespace_gone() {
+  local ns="$1"
+  kubectl get namespace "${ns}" &>/dev/null && return 1
+  if ! kubectl cluster-info &>/dev/null; then
+    error "Lost connection to the cluster while checking namespace '${ns}'."
+    error "Re-run ./teardown.sh once connectivity is restored."
+    exit 1
+  fi
+  return 0
+}
+
 # ─── Gitea config persistence (cluster-side, survives across processes) ──────
 
 # Usage: save_gitea_config (writes current GITEA_URL/GITEA_EXPOSURE_MANAGED)

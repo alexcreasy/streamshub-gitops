@@ -118,24 +118,25 @@ kubectl exec -n gitea "${GITEA_POD}" -- gitea admin user create \
 
 info "Waiting for Gitea to be reachable at ${GITEA_URL}..."
 GITEA_READY=false
-for i in $(seq 1 10); do
-  if curl -sf "${GITEA_URL}/api/v1/version" >/dev/null 2>&1; then
-    GITEA_READY=true
-    break
-  fi
-  sleep 3
-done
+NEEDS_MANAGED_PORT_FORWARD=false
+[[ "$CREATE_CLUSTER_MODE" != "true" && "$GITEA_EXPOSURE_MANAGED" != "true" ]] && NEEDS_MANAGED_PORT_FORWARD=true
 
-# BYO clusters (not --create-cluster, not already exposed downstream, e.g. via a
-# Route) have no automatic path from localhost to the Gitea NodePort. Rather than
-# require the user to have a port-forward running before setup.sh even starts,
-# start one ourselves just long enough to finish configuring Gitea (Steps 6-7)
-# — everything after that talks to Gitea in-cluster, not from this host.
-if [[ "${GITEA_READY}" != "true" && "$CREATE_CLUSTER_MODE" != "true" && "$GITEA_EXPOSURE_MANAGED" != "true" ]]; then
+if [[ "$NEEDS_MANAGED_PORT_FORWARD" != "true" ]]; then
+  for i in $(seq 1 60); do
+    if curl -sf "${GITEA_URL}/api/v1/version" >/dev/null 2>&1; then
+      GITEA_READY=true
+      break
+    fi
+    sleep 3
+  done
+fi
+
+# BYO clusters that don't manage the gitea exposure themselves require an explicit port-forward to seed.
+if [[ "${GITEA_READY}" != "true" && "$NEEDS_MANAGED_PORT_FORWARD" == "true" ]]; then
   info "Gitea isn't reachable yet — starting a temporary port-forward to configure it..."
   kubectl port-forward svc/gitea-http -n gitea "${GITEA_HOST_PORT}:3000" >/dev/null 2>&1 &
   GITEA_PORT_FORWARD_PID=$!
-  for i in $(seq 1 20); do
+  for i in $(seq 1 60); do
     if curl -sf "${GITEA_URL}/api/v1/version" >/dev/null 2>&1; then
       GITEA_READY=true
       break

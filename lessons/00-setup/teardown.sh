@@ -22,11 +22,16 @@ if [[ "$DELETE_CLUSTER_MODE" == "true" ]]; then
   kind delete cluster --name "${CLUSTER_NAME}"
   info "Done. All tutorial resources have been removed."
 else
+  require_cluster
+
   info "Removing tutorial resources from the current kubectl context ($(kubectl config current-context 2>/dev/null || echo 'none'))..."
   info "(Pass --delete-cluster instead if this cluster was created with 'setup.sh --create-cluster'.)"
 
+  # Not `|| true`: this has to succeed before we delete the kafka-tutorial
+  # namespace next, otherwise ArgoCD can keep reconciling/recreating Kafka
+  # resources while we're trying to tear that namespace down.
   kubectl delete application "${KAFKA_NAMESPACE}" "${KAFKA_STAGING_NAMESPACE}" "${KAFKA_PRODUCTION_NAMESPACE}" \
-    -n argocd --ignore-not-found || true
+    -n argocd --ignore-not-found
 
   kubectl delete namespace "${KAFKA_NAMESPACE}" "${KAFKA_STAGING_NAMESPACE}" "${KAFKA_PRODUCTION_NAMESPACE}" \
     --ignore-not-found --wait=false || true
@@ -41,7 +46,7 @@ else
     remove_strimzi_finalizers "${KAFKA_NAMESPACE}" "${KAFKA_STAGING_NAMESPACE}" "${KAFKA_PRODUCTION_NAMESPACE}"
     STILL_PRESENT=false
     for ns in "${KAFKA_NAMESPACE}" "${KAFKA_STAGING_NAMESPACE}" "${KAFKA_PRODUCTION_NAMESPACE}"; do
-      kubectl get namespace "${ns}" &>/dev/null && STILL_PRESENT=true
+      namespace_gone "${ns}" || STILL_PRESENT=true
     done
     if [[ "${STILL_PRESENT}" != "true" ]]; then
       KAFKA_NAMESPACES_GONE=true
@@ -64,7 +69,7 @@ else
 
   REMAINING=""
   for ns in "${KAFKA_NAMESPACE}" "${KAFKA_STAGING_NAMESPACE}" "${KAFKA_PRODUCTION_NAMESPACE}" gitea strimzi-operator argocd; do
-    kubectl get namespace "${ns}" &>/dev/null && REMAINING="${REMAINING} ${ns}"
+    namespace_gone "${ns}" || REMAINING="${REMAINING} ${ns}"
   done
 
   if [[ -n "${REMAINING}" ]]; then

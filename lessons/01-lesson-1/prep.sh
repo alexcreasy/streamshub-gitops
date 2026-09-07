@@ -12,6 +12,7 @@ info "Validating tutorial infrastructure..."
 
 require_cluster
 load_gitea_config
+require_strimzi
 
 if ! kubectl get kafka "${KAFKA_CLUSTER_NAME}" -n "${KAFKA_NAMESPACE}" &>/dev/null; then
   error "Kafka cluster '${KAFKA_CLUSTER_NAME}' not found in namespace '${KAFKA_NAMESPACE}'."

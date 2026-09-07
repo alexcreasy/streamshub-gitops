@@ -61,7 +61,7 @@ Things to know when using an existing cluster:
 
 * **The cluster is assumed to be dedicated to this tutorial.** Setup doesn't check for or try to coexist with a pre-existing ArgoCD/Strimzi/Gitea install.
 * **You need cluster-admin rights**, since setup installs cluster-scoped resources (CRDs, ClusterRoleBindings) for Strimzi and ArgoCD.
-* **You are responsible for making Gitea reachable for each lesson.** Before running any of the individual lesson `prep.sh` scripts you'll need to setup a port-forward so Gitea is exposed on port `3001`. You can do this by running the following command in a separate tutorial and leaving it running for the duration of the tutorial:
+* **You are responsible for making Gitea reachable for each lesson.** Before running any of the individual lesson `prep.sh` scripts you'll need to setup a port-forward so Gitea is exposed on port `3001`. You can do this by running the following command in a separate terminal and leaving it running for the duration of the tutorial:
 
 
   ```bash
