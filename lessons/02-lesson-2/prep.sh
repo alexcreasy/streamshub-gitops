@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../00-setup/common.sh
 source "${SCRIPT_DIR}/../00-setup/common.sh"
+TUTORIAL_WORK_DIR=""
 
 # ─── Step 1: Validate infrastructure ──────────────────────────────────────────
 
@@ -41,16 +42,16 @@ info "Previous lesson state cleaned up."
 
 info "Resetting Gitea repository to lesson-2 starting state..."
 
-WORK_DIR=$(mktemp -d)
+TUTORIAL_WORK_DIR=$(mktemp -d)
 trap cleanup EXIT
 
-git clone "$(gitea_clone_url)" "${WORK_DIR}/repo" 2>/dev/null
+git clone "$(gitea_clone_url)" "${TUTORIAL_WORK_DIR}/repo" 2>/dev/null
 
-rm -rf "${WORK_DIR}/repo/manifests"
-mkdir -p "${WORK_DIR}/repo/manifests"
-cp -r "${SCRIPT_DIR}/lesson-manifests/." "${WORK_DIR}/repo/manifests/"
+rm -rf "${TUTORIAL_WORK_DIR}/repo/manifests"
+mkdir -p "${TUTORIAL_WORK_DIR}/repo/manifests"
+cp -r "${SCRIPT_DIR}/lesson-manifests/." "${TUTORIAL_WORK_DIR}/repo/manifests/"
 
-pushd "${WORK_DIR}/repo" >/dev/null
+pushd "${TUTORIAL_WORK_DIR}/repo" >/dev/null
 git add .
 if git diff --cached --quiet; then
   info "Gitea repo is already in lesson-2 starting state, skipping commit."

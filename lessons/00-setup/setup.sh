@@ -6,6 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/common.sh"
 # shellcheck source=downstream-setup.sh
 source "${SCRIPT_DIR}/downstream/downstream-setup.sh"
+TUTORIAL_WORK_DIR=""
 trap cleanup EXIT
 
 for arg in "$@"; do
@@ -186,14 +187,14 @@ fi
 
 info "Seeding Gitea repository with base manifests..."
 
-WORK_DIR=$(mktemp -d)
+TUTORIAL_WORK_DIR=$(mktemp -d)
 
-git clone "$(gitea_clone_url)" "${WORK_DIR}/repo" 2>/dev/null
+git clone "$(gitea_clone_url)" "${TUTORIAL_WORK_DIR}/repo" 2>/dev/null
 
-mkdir -p "${WORK_DIR}/repo/manifests"
-cp "${SCRIPT_DIR}/base-manifests/"* "${WORK_DIR}/repo/manifests/"
+mkdir -p "${TUTORIAL_WORK_DIR}/repo/manifests"
+cp "${SCRIPT_DIR}/base-manifests/"* "${TUTORIAL_WORK_DIR}/repo/manifests/"
 
-pushd "${WORK_DIR}/repo" >/dev/null
+pushd "${TUTORIAL_WORK_DIR}/repo" >/dev/null
 git add .
 if git diff --cached --quiet; then
   info "Manifests already present in Gitea repo, skipping commit."

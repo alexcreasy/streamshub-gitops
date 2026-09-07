@@ -26,11 +26,13 @@ warn()  { echo -e "\033[1;33m[WARN]\033[0m  $*"; }
 error() { echo -e "\033[1;31m[ERROR]\033[0m $*" >&2; }
 b64decode() { echo "$1" | base64 -d 2>/dev/null || echo "$1" | base64 -D 2>/dev/null; }
 
-# ─── Temp directory cleanup (use with: trap cleanup EXIT) ─────────────────────
+# ─── Temp directory cleanup (use with: TUTORIAL_WORK_DIR=""; trap cleanup EXIT) ──
+# Callers must initialize TUTORIAL_WORK_DIR="" (clearing any inherited env value)
+# before registering the trap, and only then assign it a real mktemp -d path.
 
 cleanup() {
-  if [[ -n "${WORK_DIR:-}" ]]; then
-    rm -rf "${WORK_DIR}"
+  if [[ -n "${TUTORIAL_WORK_DIR:-}" ]]; then
+    rm -rf "${TUTORIAL_WORK_DIR}"
   fi
   if [[ -n "${GITEA_PORT_FORWARD_PID:-}" ]]; then
     kill "${GITEA_PORT_FORWARD_PID}" 2>/dev/null || true
