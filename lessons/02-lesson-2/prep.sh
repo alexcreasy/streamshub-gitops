@@ -4,11 +4,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../00-setup/common.sh
 source "${SCRIPT_DIR}/../00-setup/common.sh"
+TUTORIAL_WORK_DIR=""
 
 # ─── Step 1: Validate infrastructure ──────────────────────────────────────────
 
 info "Validating tutorial infrastructure..."
 require_cluster
+load_gitea_config
 require_strimzi
 require_gitea
 info "Infrastructure checks passed."
@@ -40,16 +42,16 @@ info "Previous lesson state cleaned up."
 
 info "Resetting Gitea repository to lesson-2 starting state..."
 
-WORK_DIR=$(mktemp -d)
+TUTORIAL_WORK_DIR=$(mktemp -d)
 trap cleanup EXIT
 
-git clone "http://${GITEA_USER}:${GITEA_PASSWORD}@localhost:${GITEA_HOST_PORT}/${GITEA_USER}/${GITEA_REPO}.git" "${WORK_DIR}/repo" 2>/dev/null
+git clone "$(gitea_clone_url)" "${TUTORIAL_WORK_DIR}/repo" 2>/dev/null
 
-rm -rf "${WORK_DIR}/repo/manifests"
-mkdir -p "${WORK_DIR}/repo/manifests"
-cp -r "${SCRIPT_DIR}/lesson-manifests/." "${WORK_DIR}/repo/manifests/"
+rm -rf "${TUTORIAL_WORK_DIR}/repo/manifests"
+mkdir -p "${TUTORIAL_WORK_DIR}/repo/manifests"
+cp -r "${SCRIPT_DIR}/lesson-manifests/." "${TUTORIAL_WORK_DIR}/repo/manifests/"
 
-pushd "${WORK_DIR}/repo" >/dev/null
+pushd "${TUTORIAL_WORK_DIR}/repo" >/dev/null
 git add .
 if git diff --cached --quiet; then
   info "Gitea repo is already in lesson-2 starting state, skipping commit."
@@ -91,7 +93,7 @@ echo ""
 info "Lesson 2 is ready. Open README.md and follow the lesson steps."
 echo ""
 echo "  Clone the repo to follow along:"
-echo "     git clone http://${GITEA_USER}:${GITEA_PASSWORD}@localhost:${GITEA_HOST_PORT}/${GITEA_USER}/${GITEA_REPO}.git /tmp/gitops-lesson-2"
+echo "     git clone $(gitea_clone_url) /tmp/gitops-lesson-2"
 echo ""
 echo "  Gitea (your Git server):  ${GITEA_URL}"
 echo "  Username: ${GITEA_USER}   Password: ${GITEA_PASSWORD}"

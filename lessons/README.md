@@ -27,8 +27,10 @@ A shared cluster runs for the whole series. You set it up once, then run a short
 
 ```bash
 cd 00-setup
-./setup.sh
+./setup.sh --create-cluster
 ```
+
+(Already have a cluster you want to use instead? See [Using an existing cluster](00-setup/README.md#using-an-existing-cluster) — it's the default when you omit `--create-cluster`.)
 
 **2. Run the prep script for Lesson 1**, then open its README:
 

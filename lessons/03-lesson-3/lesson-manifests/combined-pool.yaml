@@ -14,9 +14,7 @@ spec:
     type: jbod
     volumes:
       - id: 0
-        type: persistent-claim
-        size: 2Gi
-        deleteClaim: true
+        type: ephemeral
   resources:
     requests:
       memory: 512Mi
