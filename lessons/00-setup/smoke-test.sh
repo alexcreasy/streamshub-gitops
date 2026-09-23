@@ -105,6 +105,15 @@ verify_resource_ready() {
     elapsed=$((elapsed + 5))
   done
 
+  # Check if resource actually exists after the wait
+  if ! kubectl get "${resource_type}/${resource_name}" -n "${namespace}" &>/dev/null; then
+    error "${resource_type}/${resource_name} does not exist after 60s"
+    error "ArgoCD may have synced but resource was not created"
+    info "Checking ArgoCD application status..."
+    kubectl get application -n argocd -o wide 2>&1 | grep -E "NAME|kafka" || true
+    return 1
+  fi
+
   # Phase 2: Use kubectl wait for the Ready condition (this is what kubectl does best)
   if kubectl wait "${resource_type}/${resource_name}" \
       --for=condition=Ready -n "${namespace}" \
@@ -198,7 +207,14 @@ test_lesson_1() {
   info "Step 4/7: Ensuring topic.yaml is in kustomization.yaml..."
   if [[ "${initial_has_topic}" == "0" ]]; then
     echo "  - topic.yaml" >> manifests/kustomization.yaml
+    info "Added topic.yaml to kustomization"
+  else
+    warn "topic.yaml already in kustomization.yaml (${initial_has_topic} times)"
   fi
+
+  # Debug: show the kustomization file
+  info "Current kustomization.yaml contents:"
+  cat manifests/kustomization.yaml
 
   # Step 5: Commit and push
   info "Step 5/7: Committing and pushing change..."
@@ -207,6 +223,9 @@ test_lesson_1() {
   # Handle case where there were no changes
   if [[ -z "${new_revision}" ]]; then
     new_revision=$(git rev-parse HEAD)
+    warn "No changes were committed, using current HEAD: ${new_revision:0:7}"
+  else
+    info "Committed and pushed: ${new_revision:0:7}"
   fi
 
   # Step 6: Wait for ArgoCD sync
@@ -216,6 +235,12 @@ test_lesson_1() {
     cd - >/dev/null
     return 1
   fi
+
+  # Debug: Check what resources ArgoCD thinks it managed
+  info "Checking ArgoCD managed resources..."
+  kubectl get application kafka-tutorial -n argocd -o yaml | grep -A 20 "resources:" || true
+  info "Checking for KafkaTopic resources in namespace..."
+  kubectl get kafkatopic -n kafka-tutorial || echo "No topics found"
 
   # Step 7: Verify topic created and ready
   info "Step 7/7: Verifying topic ready..."
