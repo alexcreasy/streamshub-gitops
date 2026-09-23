@@ -45,11 +45,12 @@ git_commit_and_push() {
   local message="$1"
   git add .
   if git diff --cached --quiet; then
-    warn "No changes to commit"
+    # No output when no changes - caller will use current HEAD
     return 0
   fi
-  git commit -m "${message}"
-  git push
+  # Redirect commit and push output to stderr so only SHA is captured
+  git commit -m "${message}" >&2
+  git push >&2
   git rev-parse HEAD
 }
 
@@ -284,6 +285,11 @@ test_lesson_2() {
   info "Step 6/8: Committing and pushing promotion..."
   local new_revision=$(git_commit_and_push "Promote my-first-topic to production")
 
+  # Handle case where there were no changes
+  if [[ -z "${new_revision}" ]]; then
+    new_revision=$(git rev-parse HEAD)
+  fi
+
   # Step 7: Wait for production ArgoCD sync
   info "Step 7/8: Waiting for production ArgoCD sync..."
   if ! verify_argocd_sync "kafka-production" "${new_revision}"; then
@@ -358,6 +364,11 @@ test_lesson_3() {
   info "Step 5/10: Committing and pushing bad change..."
   local bad_revision=$(git_commit_and_push "Reduce my-first-topic to 1 partition")
 
+  # Handle case where there were no changes
+  if [[ -z "${bad_revision}" ]]; then
+    bad_revision=$(git rev-parse HEAD)
+  fi
+
   # Step 6: Wait for ArgoCD sync (it should sync successfully)
   info "Step 6/10: Waiting for ArgoCD sync of bad change..."
   if ! verify_argocd_sync "kafka-tutorial" "${bad_revision}"; then
@@ -377,11 +388,11 @@ test_lesson_3() {
 
   # Step 8: Revert the bad change
   info "Step 8/10: Reverting bad change with git revert..."
-  git revert HEAD --no-edit
+  git revert HEAD --no-edit >&2
 
   # Step 9: Push the revert
   info "Step 9/10: Pushing revert commit..."
-  git push
+  git push >&2
   local revert_revision=$(git rev-parse HEAD)
 
   # Step 10: Wait for ArgoCD sync
