@@ -54,7 +54,12 @@ popd >/dev/null
 info "Waiting for ArgoCD to sync..."
 wait_for_argocd_sync "kafka-tutorial" "${TARGET_REVISION}"
 
-# ─── Step 4: Print starting instructions ──────────────────────────────────────
+# ─── Step 4: Auto-clone lesson repository for user ───────────────────────────
+
+LESSON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CLONE_DIR="$(auto_clone_lesson_repo "${LESSON_DIR}")"
+
+# ─── Step 5: Print starting instructions ──────────────────────────────────────
 
 ARGOCD_PASSWORD=$(b64decode "$(kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath='{.data.password}')")
 
@@ -62,9 +67,6 @@ echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 info "Lesson 1 is ready. Open README.md and follow the lesson steps."
-echo ""
-echo "  Clone the repo to follow along:"
-echo "     git clone $(gitea_clone_url) /tmp/gitops-lesson-1"
 echo ""
 echo "  Gitea (your Git server):  ${GITEA_URL}"
 echo "  Username: ${GITEA_USER}   Password: ${GITEA_PASSWORD}"

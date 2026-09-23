@@ -83,7 +83,12 @@ info "Waiting for KafkaTopic to be ready..."
 kubectl wait kafkatopic/my-first-topic --for=condition=Ready -n "${KAFKA_NAMESPACE}" --timeout=120s 2>/dev/null || \
   warn "KafkaTopic is not yet ready. Check with: kubectl get kafkatopic -n ${KAFKA_NAMESPACE}"
 
-# ─── Step 8: Print starting instructions ──────────────────────────────────────
+# ─── Step 8: Auto-clone lesson repository for user ───────────────────────────
+
+LESSON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CLONE_DIR="$(auto_clone_lesson_repo "${LESSON_DIR}")"
+
+# ─── Step 9: Print starting instructions ──────────────────────────────────────
 
 ARGOCD_PASSWORD=$(b64decode "$(kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath='{.data.password}')")
 
@@ -91,9 +96,6 @@ echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 info "Lesson 3 is ready. Open README.md and follow the lesson steps."
-echo ""
-echo "  Clone the repo to follow along:"
-echo "     git clone $(gitea_clone_url) /tmp/gitops-lesson-3"
 echo ""
 echo "  Gitea (your Git server):  ${GITEA_URL}"
 echo "  Username: ${GITEA_USER}   Password: ${GITEA_PASSWORD}"

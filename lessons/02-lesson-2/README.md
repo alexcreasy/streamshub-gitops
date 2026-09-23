@@ -56,13 +56,12 @@ You can re-run `./prep.sh` at any time to reset back to the lesson starting stat
 
 ## Part 1: Explore the environment
 
-### Clone the repository
+### Navigate to the repository
 
-When you ran the `./prep.sh` script, it printed the exact `git clone` command to use (the Gitea address can vary depending on how your cluster exposes it), run that command, it will follow the below format:
+The prep script has automatically cloned the lesson repository to the `workspace/` subdirectory within this lesson folder. Navigate to it with:
 
 ```bash
-git clone <external address of gitea server> /tmp/gitops-lesson-2
-cd /tmp/gitops-lesson-2
+cd workspace/
 ```
 
 ### Check what's running in each environment
@@ -354,10 +353,10 @@ When you are done with all lessons, delete the cluster:
 ../00-setup/teardown.sh
 ```
 
-Clean up the cloned repo:
+The workspace directory will be automatically cleaned up the next time you run `./prep.sh`, or you can remove it manually if desired:
 
 ```bash
-rm -rf /tmp/gitops-lesson-2
+rm -rf workspace/
 ```
 
 ---

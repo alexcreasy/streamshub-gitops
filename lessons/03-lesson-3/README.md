@@ -58,19 +58,18 @@ This takes approximately 5 minutes. It:
 
 When it finishes it prints the Gitea and ArgoCD credentials.
 
-You can re-run `./prep.sh` at any time to reset back to the lesson starting state. If you have already cloned the repo at `/tmp/gitops-lesson-3`, delete it first (`rm -rf /tmp/gitops-lesson-3`) because the reset rewrites the Gitea commit history.
+You can re-run `./prep.sh` at any time to reset back to the lesson starting state. The workspace directory will be automatically deleted and re-cloned with the reset state.
 
 ---
 
 ## Part 1: Explore the starting state
 
-### Clone the repository
+### Navigate to the repository
 
-When you ran the `./prep.sh` script, it printed the exact `git clone` command to use (the Gitea address can vary depending on how your cluster exposes it), run that command, it will follow the below format:
+The prep script has automatically cloned the lesson repository to the `workspace/` subdirectory within this lesson folder. Navigate to it with:
 
 ```bash
-git clone <external address of gitea server> /tmp/gitops-lesson-3
-cd /tmp/gitops-lesson-3
+cd workspace/
 ```
 
 ### Check the running resources
@@ -417,10 +416,10 @@ When you are done with all lessons, delete the cluster:
 ../00-setup/teardown.sh
 ```
 
-Clean up the cloned repo:
+The workspace directory will be automatically cleaned up the next time you run `./prep.sh`, or you can remove it manually if desired:
 
 ```bash
-rm -rf /tmp/gitops-lesson-3
+rm -rf workspace/
 ```
 
 ---

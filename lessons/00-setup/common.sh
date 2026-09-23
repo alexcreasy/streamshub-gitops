@@ -7,8 +7,13 @@ CLUSTER_NAME="gitops-tutorial"
 GITEA_USER="tutorial-user"
 GITEA_PASSWORD="tutorial-password"
 GITEA_REPO="streamshub-gitops"
-GITEA_HOST_PORT=3001
-GITEA_URL="http://localhost:${GITEA_HOST_PORT}"
+
+# Allow override via environment variable (undocumented feature)
+if [ -z "${GITEA_URL}" ]; then
+    GITEA_HOST_PORT=3001
+    GITEA_URL="http://localhost:${GITEA_HOST_PORT}"
+fi
+
 GITEA_EXPOSURE_MANAGED=false
 
 ARGOCD_KUSTOMIZE_DIR="${SCRIPT_DIR}/argocd"
@@ -130,6 +135,30 @@ load_gitea_config() {
 # Usage: gitea_clone_url (prints the full authenticated clone URL)
 gitea_clone_url() {
   echo "http://${GITEA_USER}:${GITEA_PASSWORD}@${GITEA_URL#http://}/${GITEA_USER}/${GITEA_REPO}.git"
+}
+
+# Auto-clone the lesson repository into a workspace directory
+# Args: $1 = lesson directory path (e.g., /path/to/lessons/01-lesson-1)
+auto_clone_lesson_repo() {
+    local lesson_dir="$1"
+    local workspace_dir="${lesson_dir}/workspace"
+
+    # Delete existing workspace if present
+    if [ -d "${workspace_dir}" ]; then
+        echo "Removing existing workspace directory..."
+        rm -rf "${workspace_dir}"
+    fi
+
+    # Clone into workspace
+    echo "Cloning lesson repository into workspace..."
+    git clone "$(gitea_clone_url)" "${workspace_dir}"
+
+    echo ""
+    echo "✓ Repository cloned to: ${workspace_dir}"
+    echo "  Run: cd ${workspace_dir}"
+    echo ""
+
+    echo "${workspace_dir}"
 }
 
 # ─── Operational helpers ─────────────────────────────────────────────────────

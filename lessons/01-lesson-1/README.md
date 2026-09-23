@@ -47,13 +47,12 @@ You can re-run `./prep.sh` at any time to reset back to the lesson starting stat
 
 Before you make any changes, take a moment to explore the environment. This is where the lesson starts: everything you are about to see was deployed by ArgoCD from Git.
 
-### Clone the repository
+### Navigate to the repository
 
-The Gitea server is running inside the cluster. When you ran the `./prep.sh` script, it printed the exact `git clone` command to use (the Gitea address can vary depending on how your cluster exposes it), run that command, it will follow the below format:
+The prep script has automatically cloned the lesson repository to the `workspace/` subdirectory within this lesson folder. Navigate to it with:
 
 ```bash
-git clone <external address of gitea server> /tmp/gitops-lesson-1
-cd /tmp/gitops-lesson-1
+cd workspace/
 ```
 
 This is the repository ArgoCD is watching. Any change you push here will be picked up and applied to the cluster.
@@ -256,10 +255,10 @@ When you are done with all lessons, delete the cluster to remove everything:
 ../00-setup/teardown.sh
 ```
 
-This deletes the KinD cluster and all resources within it. Clean up the cloned repo too:
+This deletes the KinD cluster and all resources within it. The workspace directory will be automatically cleaned up the next time you run `./prep.sh`, or you can remove it manually if desired:
 
 ```bash
-rm -rf /tmp/gitops-lesson-1
+rm -rf workspace/
 ```
 
 ---
