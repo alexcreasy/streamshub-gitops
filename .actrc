@@ -1,0 +1,8 @@
+# Act configuration for local GitHub Actions testing
+# https://github.com/nektos/act
+
+# Use catthehacker's full Ubuntu image for Docker-in-Docker support (required for kind)
+-P ubuntu-latest=catthehacker/ubuntu:full-latest
+
+# Ensure consistent architecture
+--container-architecture linux/amd64
