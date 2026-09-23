@@ -95,13 +95,24 @@ verify_resource_ready() {
 
   info "Waiting for ${resource_type}/${resource_name} in ${namespace} to be ready..."
 
+  # Phase 1: Wait for resource to exist (kubectl wait requires resource to exist first)
+  local elapsed=0
+  while [[ ${elapsed} -lt 60 ]]; do
+    if kubectl get "${resource_type}/${resource_name}" -n "${namespace}" &>/dev/null; then
+      break
+    fi
+    sleep 5
+    elapsed=$((elapsed + 5))
+  done
+
+  # Phase 2: Use kubectl wait for the Ready condition (this is what kubectl does best)
   if kubectl wait "${resource_type}/${resource_name}" \
       --for=condition=Ready -n "${namespace}" \
       --timeout="${timeout}s" 2>/dev/null; then
     info "${resource_type}/${resource_name} is ready"
     return 0
   else
-    error "${resource_type}/${resource_name} is not ready"
+    error "${resource_type}/${resource_name} not ready within ${timeout}s"
     kubectl describe "${resource_type}/${resource_name}" -n "${namespace}" 2>&1 | head -30 || true
     return 1
   fi
