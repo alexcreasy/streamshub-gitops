@@ -198,18 +198,17 @@ test_lesson_1() {
 
   # The prep script includes topic.yaml in the manifests directory but the lesson
   # has users add it to kustomization. Let's check the actual state from prep.
-  # Looking at the prep script analysis, it appears to include all files.
-  # Let me verify what the initial state should be.
-  local initial_has_topic=$(grep -c "topic.yaml" manifests/kustomization.yaml || echo "0")
+  # Note: grep -c returns exit code 1 when count is 0, so we check the output not the exit code
+  local initial_has_topic=$(grep -c "topic.yaml" manifests/kustomization.yaml 2>/dev/null || true)
   info "Initial kustomization.yaml contains topic.yaml: ${initial_has_topic} times"
 
   # Step 4: Add topic.yaml to kustomization (if not already present)
   info "Step 4/7: Ensuring topic.yaml is in kustomization.yaml..."
-  if [[ "${initial_has_topic}" == "0" ]]; then
+  if ! grep -q "topic.yaml" manifests/kustomization.yaml 2>/dev/null; then
     echo "  - topic.yaml" >> manifests/kustomization.yaml
     info "Added topic.yaml to kustomization"
   else
-    warn "topic.yaml already in kustomization.yaml (${initial_has_topic} times)"
+    warn "topic.yaml already in kustomization.yaml"
   fi
 
   # Debug: show the kustomization file
