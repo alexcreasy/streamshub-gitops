@@ -102,9 +102,12 @@ verify_resource_ready() {
   info "Waiting for ${resource_type}/${resource_name} in ${namespace} to be ready..."
 
   # Phase 1: Wait for resource to exist (kubectl wait requires resource to exist first)
+  # Timeout must be >= ArgoCD sync timeout since ArgoCD creates the resource
+  local existence_timeout=180  # Match ARGOCD_SYNC_TIMEOUT
   local elapsed=0
-  while [[ ${elapsed} -lt 60 ]]; do
+  while [[ ${elapsed} -lt ${existence_timeout} ]]; do
     if kubectl get "${resource_type}/${resource_name}" -n "${namespace}" &>/dev/null; then
+      info "Resource ${resource_type}/${resource_name} exists (found after ${elapsed}s)"
       break
     fi
     sleep 5
@@ -113,7 +116,7 @@ verify_resource_ready() {
 
   # Check if resource actually exists after the wait
   if ! kubectl get "${resource_type}/${resource_name}" -n "${namespace}" &>/dev/null; then
-    error "${resource_type}/${resource_name} does not exist after 60s"
+    error "${resource_type}/${resource_name} does not exist after ${existence_timeout}s"
     error "ArgoCD may have synced but resource was not created"
     info "Checking ArgoCD application status..."
     kubectl get application -n argocd -o wide 2>&1 | grep -E "NAME|kafka" || true
@@ -148,6 +151,34 @@ verify_resource_not_ready() {
     error "${resource_type}/${resource_name} ready status is '${ready_status}', expected 'False'"
     return 1
   fi
+}
+
+wait_for_resource_not_ready() {
+  local resource_type="$1"
+  local resource_name="$2"
+  local namespace="$3"
+  local timeout="${4:-60}"  # Default 60s timeout
+
+  info "Waiting for ${resource_type}/${resource_name} to become NOT ready (timeout: ${timeout}s)..."
+
+  local elapsed=0
+  while [[ ${elapsed} -lt ${timeout} ]]; do
+    local ready_status=$(kubectl get "${resource_type}/${resource_name}" -n "${namespace}" \
+      -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "Unknown")
+
+    if [[ "${ready_status}" == "False" ]]; then
+      info "${resource_type}/${resource_name} is now NOT ready"
+      return 0
+    fi
+
+    sleep 5
+    elapsed=$((elapsed + 5))
+  done
+
+  error "${resource_type}/${resource_name} did not become NOT ready within ${timeout}s"
+  error "Current ready status: ${ready_status}"
+  kubectl describe "${resource_type}/${resource_name}" -n "${namespace}" 2>&1 | head -50 || true
+  return 1
 }
 
 verify_field_value() {
@@ -292,10 +323,21 @@ test_lesson_2() {
 
   # Step 3: Verify staging has topic, production does not
   info "Step 3/8: Verifying initial multi-environment state..."
-  sleep 5  # Give topics time to reconcile
+  info "Waiting for topic to exist in staging..."
+
+  # Poll for topic existence (up to 60s)
+  local elapsed=0
+  while [[ ${elapsed} -lt 60 ]]; do
+    if kubectl get kafkatopic my-first-topic -n kafka-staging &>/dev/null; then
+      info "Topic exists in staging"
+      break
+    fi
+    sleep 2
+    elapsed=$((elapsed + 2))
+  done
 
   if ! kubectl get kafkatopic my-first-topic -n kafka-staging &>/dev/null; then
-    error "Topic should exist in staging after prep"
+    error "Topic should exist in staging after prep (waited 60s)"
     TEST_FAILURES+=("${test_name}: staging topic missing")
     cd - >/dev/null
     return 1
@@ -399,7 +441,9 @@ test_lesson_3() {
 
   # Step 4: Make breaking change (reduce partitions)
   info "Step 4/10: Making breaking change (reducing partitions from 3 to 1)..."
+  # Use .bak extension for macOS compatibility, then remove it
   sed -i.bak 's/partitions: 3/partitions: 1/' manifests/topic.yaml
+  rm -f manifests/topic.yaml.bak
 
   # Step 5: Commit and push bad change
   info "Step 5/10: Committing and pushing bad change..."
@@ -418,13 +462,12 @@ test_lesson_3() {
     return 1
   fi
 
-  # Step 7: Wait for topic operator to process and verify topic is NOT ready
-  info "Step 7/10: Waiting for topic operator to process bad change..."
-  sleep 15  # Give topic operator time to reject the change
-
-  if ! verify_resource_not_ready "kafkatopic" "my-first-topic" "kafka-tutorial"; then
-    warn "Topic should be NOT ready after bad change, but continuing..."
-    # Don't fail here as timing might vary
+  # Step 7: Wait for topic operator to reject bad change
+  info "Step 7/10: Waiting for topic operator to reject bad change..."
+  if ! wait_for_resource_not_ready "kafkatopic" "my-first-topic" "kafka-tutorial" 60; then
+    TEST_FAILURES+=("${test_name}: topic did not become NOT ready after bad change")
+    cd - >/dev/null
+    return 1
   fi
 
   # Step 8: Revert the bad change
