@@ -30,6 +30,12 @@ cleanup_smoke_test() {
   if [[ -n "${TUTORIAL_WORK_DIR:-}" && -d "${TUTORIAL_WORK_DIR}" ]]; then
     rm -rf "${TUTORIAL_WORK_DIR}"
   fi
+
+  # Kill port-forward if running
+  if [[ -n "${GITEA_PORT_FORWARD_PID:-}" ]]; then
+    info "Stopping Gitea port-forward..."
+    kill "${GITEA_PORT_FORWARD_PID}" 2>/dev/null || true
+  fi
 }
 
 trap cleanup_smoke_test EXIT
@@ -517,6 +523,33 @@ main() {
 
   # Load Gitea config
   load_gitea_config
+
+  # Set up Gitea port-forward in BYO cluster mode if needed
+  if [[ "${GITEA_EXPOSURE_MANAGED}" != "true" ]]; then
+    if ! curl -sf "${GITEA_URL}/api/v1/version" >/dev/null 2>&1; then
+      info "Setting up Gitea port-forward for BYO cluster mode..."
+      kubectl port-forward svc/gitea-http -n gitea 3001:3000 >/dev/null 2>&1 &
+      GITEA_PORT_FORWARD_PID=$!
+
+      # Wait for port-forward to establish
+      local retries=0
+      while [[ ${retries} -lt 10 ]]; do
+        if curl -sf "${GITEA_URL}/api/v1/version" >/dev/null 2>&1; then
+          info "Gitea port-forward established (PID: ${GITEA_PORT_FORWARD_PID})"
+          break
+        fi
+        sleep 2
+        retries=$((retries + 1))
+      done
+
+      if [[ ${retries} -ge 10 ]]; then
+        error "Failed to establish Gitea port-forward"
+        exit 1
+      fi
+    else
+      info "Gitea already reachable at ${GITEA_URL}"
+    fi
+  fi
 
   # Run lesson tests
   test_lesson_1 || true
