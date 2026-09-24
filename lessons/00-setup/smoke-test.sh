@@ -15,6 +15,18 @@ LESSON_REPOS=()
 
 ARGOCD_SYNC_TIMEOUT=180  # 3 minutes for ArgoCD sync
 TOPIC_READY_TIMEOUT=120  # 2 minutes for topic ready
+TOPIC_READY_AFTER_REVERT_TIMEOUT=180  # revert triggers a fresh reconcile cycle, needs more headroom than TOPIC_READY_TIMEOUT
+NOT_READY_TIMEOUT=60  # topic operator should reject an invalid partition count quickly
+POLL_INTERVAL=5  # how often to re-check kubectl status while waiting on the timeouts above
+
+STAGING_TOPIC_EXISTENCE_TIMEOUT=60  # lesson-2 prep should already have created the staging topic
+STAGING_TOPIC_POLL_INTERVAL=2
+
+GITEA_PORT_FORWARD_MAX_RETRIES=10
+GITEA_PORT_FORWARD_POLL_INTERVAL=2
+
+VERIFY_RESOURCE_READY_DEBUG_LINES=30
+WAIT_FOR_NOT_READY_DEBUG_LINES=50
 
 # ─── Cleanup ──────────────────────────────────────────────────────────────────
 
@@ -86,8 +98,8 @@ verify_argocd_sync() {
       return 0
     fi
 
-    sleep 5
-    elapsed=$((elapsed + 5))
+    sleep "${POLL_INTERVAL}"
+    elapsed=$((elapsed + POLL_INTERVAL))
   done
 
   error "ArgoCD application '${app_name}' failed to sync within ${timeout}s"
@@ -105,15 +117,15 @@ verify_resource_ready() {
 
   # Phase 1: Wait for resource to exist (kubectl wait requires resource to exist first)
   # Timeout must be >= ArgoCD sync timeout since ArgoCD creates the resource
-  local existence_timeout=180  # Match ARGOCD_SYNC_TIMEOUT
+  local existence_timeout="${ARGOCD_SYNC_TIMEOUT}"
   local elapsed=0
   while [[ ${elapsed} -lt ${existence_timeout} ]]; do
     if kubectl get "${resource_type}/${resource_name}" -n "${namespace}" &>/dev/null; then
       info "Resource ${resource_type}/${resource_name} exists (found after ${elapsed}s)"
       break
     fi
-    sleep 5
-    elapsed=$((elapsed + 5))
+    sleep "${POLL_INTERVAL}"
+    elapsed=$((elapsed + POLL_INTERVAL))
   done
 
   # Check if resource actually exists after the wait
@@ -133,7 +145,7 @@ verify_resource_ready() {
     return 0
   else
     error "${resource_type}/${resource_name} not ready within ${timeout}s"
-    kubectl describe "${resource_type}/${resource_name}" -n "${namespace}" 2>&1 | head -30 || true
+    kubectl describe "${resource_type}/${resource_name}" -n "${namespace}" 2>&1 | head -"${VERIFY_RESOURCE_READY_DEBUG_LINES}" || true
     return 1
   fi
 }
@@ -159,7 +171,7 @@ wait_for_resource_not_ready() {
   local resource_type="$1"
   local resource_name="$2"
   local namespace="$3"
-  local timeout="${4:-60}"  # Default 60s timeout
+  local timeout="${4:-${NOT_READY_TIMEOUT}}"
 
   info "Waiting for ${resource_type}/${resource_name} to become NOT ready (timeout: ${timeout}s)..."
 
@@ -173,13 +185,13 @@ wait_for_resource_not_ready() {
       return 0
     fi
 
-    sleep 5
-    elapsed=$((elapsed + 5))
+    sleep "${POLL_INTERVAL}"
+    elapsed=$((elapsed + POLL_INTERVAL))
   done
 
   error "${resource_type}/${resource_name} did not become NOT ready within ${timeout}s"
   error "Current ready status: ${ready_status}"
-  kubectl describe "${resource_type}/${resource_name}" -n "${namespace}" 2>&1 | head -50 || true
+  kubectl describe "${resource_type}/${resource_name}" -n "${namespace}" 2>&1 | head -"${WAIT_FOR_NOT_READY_DEBUG_LINES}" || true
   return 1
 }
 
@@ -329,19 +341,19 @@ test_lesson_2() {
   info "Step 3/8: Verifying initial multi-environment state..."
   info "Waiting for topic to exist in staging..."
 
-  # Poll for topic existence (up to 60s)
+  # Poll for topic existence
   local elapsed=0
-  while [[ ${elapsed} -lt 60 ]]; do
+  while [[ ${elapsed} -lt ${STAGING_TOPIC_EXISTENCE_TIMEOUT} ]]; do
     if kubectl get kafkatopic my-first-topic -n kafka-staging &>/dev/null; then
       info "Topic exists in staging"
       break
     fi
-    sleep 2
-    elapsed=$((elapsed + 2))
+    sleep "${STAGING_TOPIC_POLL_INTERVAL}"
+    elapsed=$((elapsed + STAGING_TOPIC_POLL_INTERVAL))
   done
 
   if ! kubectl get kafkatopic my-first-topic -n kafka-staging &>/dev/null; then
-    error "Topic should exist in staging after prep (waited 60s)"
+    error "Topic should exist in staging after prep (waited ${STAGING_TOPIC_EXISTENCE_TIMEOUT}s)"
     TEST_FAILURES+=("${test_name}: staging topic missing")
     cd - >/dev/null
     return 1
@@ -469,7 +481,7 @@ test_lesson_3() {
 
   # Step 7: Wait for topic operator to reject bad change
   info "Step 7/10: Waiting for topic operator to reject bad change..."
-  if ! wait_for_resource_not_ready "kafkatopic" "my-first-topic" "kafka-tutorial" 60; then
+  if ! wait_for_resource_not_ready "kafkatopic" "my-first-topic" "kafka-tutorial" "${NOT_READY_TIMEOUT}"; then
     TEST_FAILURES+=("${test_name}: topic did not become NOT ready after bad change")
     cd - >/dev/null
     return 1
@@ -493,7 +505,7 @@ test_lesson_3() {
   fi
 
   # Verify topic is ready again
-  if ! verify_resource_ready "kafkatopic" "my-first-topic" "kafka-tutorial" 180; then
+  if ! verify_resource_ready "kafkatopic" "my-first-topic" "kafka-tutorial" "${TOPIC_READY_AFTER_REVERT_TIMEOUT}"; then
     TEST_FAILURES+=("${test_name}: topic not ready after revert")
     cd - >/dev/null
     return 1
@@ -578,16 +590,16 @@ main() {
 
       # Wait for port-forward to establish
       local retries=0
-      while [[ ${retries} -lt 10 ]]; do
+      while [[ ${retries} -lt ${GITEA_PORT_FORWARD_MAX_RETRIES} ]]; do
         if curl -sf "${GITEA_URL}/api/v1/version" >/dev/null 2>&1; then
           info "Gitea port-forward established (PID: ${GITEA_PORT_FORWARD_PID})"
           break
         fi
-        sleep 2
+        sleep "${GITEA_PORT_FORWARD_POLL_INTERVAL}"
         retries=$((retries + 1))
       done
 
-      if [[ ${retries} -ge 10 ]]; then
+      if [[ ${retries} -ge ${GITEA_PORT_FORWARD_MAX_RETRIES} ]]; then
         error "Failed to establish Gitea port-forward"
         exit 1
       fi
