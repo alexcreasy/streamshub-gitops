@@ -30,6 +30,7 @@ WAIT_FOR_NOT_READY_DEBUG_LINES=50
 
 # ─── Cleanup ──────────────────────────────────────────────────────────────────
 
+# shellcheck disable=SC2329  # invoked indirectly via `trap cleanup_smoke_test EXIT`
 cleanup_smoke_test() {
   info "Cleaning up temporary directories..."
 
@@ -88,9 +89,11 @@ verify_argocd_sync() {
 
   local elapsed=0
   while [[ ${elapsed} -lt ${timeout} ]]; do
-    local current_rev=$(kubectl get application "${app_name}" -n argocd \
+    local current_rev
+    current_rev=$(kubectl get application "${app_name}" -n argocd \
       -o jsonpath='{.status.sync.revision}' 2>/dev/null || echo "")
-    local sync_status=$(kubectl get application "${app_name}" -n argocd \
+    local sync_status
+    sync_status=$(kubectl get application "${app_name}" -n argocd \
       -o jsonpath='{.status.sync.status}' 2>/dev/null || echo "Unknown")
 
     if [[ "${current_rev}" == "${expected_revision}" && "${sync_status}" == "Synced" ]]; then
@@ -150,23 +153,6 @@ verify_resource_ready() {
   fi
 }
 
-verify_resource_not_ready() {
-  local resource_type="$1"
-  local resource_name="$2"
-  local namespace="$3"
-
-  local ready_status=$(kubectl get "${resource_type}/${resource_name}" -n "${namespace}" \
-    -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "Unknown")
-
-  if [[ "${ready_status}" == "False" ]]; then
-    info "${resource_type}/${resource_name} is correctly in NOT ready state"
-    return 0
-  else
-    error "${resource_type}/${resource_name} ready status is '${ready_status}', expected 'False'"
-    return 1
-  fi
-}
-
 wait_for_resource_not_ready() {
   local resource_type="$1"
   local resource_name="$2"
@@ -177,7 +163,8 @@ wait_for_resource_not_ready() {
 
   local elapsed=0
   while [[ ${elapsed} -lt ${timeout} ]]; do
-    local ready_status=$(kubectl get "${resource_type}/${resource_name}" -n "${namespace}" \
+    local ready_status
+    ready_status=$(kubectl get "${resource_type}/${resource_name}" -n "${namespace}" \
       -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "Unknown")
 
     if [[ "${ready_status}" == "False" ]]; then
@@ -202,7 +189,8 @@ verify_field_value() {
   local jsonpath="$4"
   local expected_value="$5"
 
-  local actual_value=$(kubectl get "${resource_type}/${resource_name}" -n "${namespace}" \
+  local actual_value
+  actual_value=$(kubectl get "${resource_type}/${resource_name}" -n "${namespace}" \
     -o jsonpath="${jsonpath}" 2>/dev/null || echo "")
 
   if [[ "${actual_value}" == "${expected_value}" ]]; then
@@ -251,7 +239,8 @@ test_lesson_1() {
   # The prep script includes topic.yaml in the manifests directory but the lesson
   # has users add it to kustomization. Let's check the actual state from prep.
   # Note: grep -c returns exit code 1 when count is 0, so we check the output not the exit code
-  local initial_has_topic=$(grep -c "topic.yaml" manifests/kustomization.yaml 2>/dev/null || true)
+  local initial_has_topic
+  initial_has_topic=$(grep -c "topic.yaml" manifests/kustomization.yaml 2>/dev/null || true)
   info "Initial kustomization.yaml contains topic.yaml: ${initial_has_topic} times"
 
   # Step 4: Add topic.yaml to kustomization (if not already present)
@@ -494,7 +483,8 @@ test_lesson_3() {
   # Step 9: Push the revert
   info "Step 9/10: Pushing revert commit..."
   git push >&2
-  local revert_revision=$(git rev-parse HEAD)
+  local revert_revision
+  revert_revision=$(git rev-parse HEAD)
 
   # Step 10: Wait for ArgoCD sync
   info "Step 10/10: Waiting for ArgoCD sync of revert..."
