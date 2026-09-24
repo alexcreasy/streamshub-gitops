@@ -2,8 +2,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TARGET_DIR="${TARGET_DIR:-${SCRIPT_DIR}/..}"
 # shellcheck source=common.sh
-source "${SCRIPT_DIR}/common.sh"
+source "${TARGET_DIR}/00-setup/common.sh"
 
 # ─── Global State ─────────────────────────────────────────────────────────────
 
@@ -214,7 +215,7 @@ test_lesson_1() {
 
   # Step 1: Run prep script
   info "Step 1/8: Running lesson-1 prep.sh..."
-  if ! "${SCRIPT_DIR}/../01-lesson-1/prep.sh"; then
+  if ! "${TARGET_DIR}/01-lesson-1/prep.sh"; then
     error "Lesson 1 prep.sh failed"
     TEST_FAILURES+=("${test_name}: prep failed")
     return 1
@@ -320,7 +321,7 @@ test_lesson_2() {
 
   # Step 1: Run prep script
   info "Step 1/9: Running lesson-2 prep.sh..."
-  if ! "${SCRIPT_DIR}/../02-lesson-2/prep.sh"; then
+  if ! "${TARGET_DIR}/02-lesson-2/prep.sh"; then
     error "Lesson 2 prep.sh failed"
     TEST_FAILURES+=("${test_name}: prep failed")
     return 1
@@ -431,7 +432,7 @@ test_lesson_3() {
 
   # Step 1: Run prep script
   info "Step 1/12: Running lesson-3 prep.sh..."
-  if ! "${SCRIPT_DIR}/../03-lesson-3/prep.sh"; then
+  if ! "${TARGET_DIR}/03-lesson-3/prep.sh"; then
     error "Lesson 3 prep.sh failed"
     TEST_FAILURES+=("${test_name}: prep failed")
     return 1
@@ -585,10 +586,10 @@ main() {
   info "========================================="
   if [[ "${CREATE_CLUSTER_MODE}" == "true" ]]; then
     info "Running setup.sh --create-cluster..."
-    "${SCRIPT_DIR}/setup.sh" --create-cluster
+    "${TARGET_DIR}/00-setup/setup.sh" --create-cluster
   else
     info "Running setup.sh (BYO cluster mode)..."
-    "${SCRIPT_DIR}/setup.sh"
+    "${TARGET_DIR}/00-setup/setup.sh"
   fi
 
   # Load Gitea config
@@ -633,10 +634,10 @@ main() {
   info "========================================="
   if [[ "${CREATE_CLUSTER_MODE}" == "true" ]]; then
     info "Running teardown.sh --delete-cluster..."
-    "${SCRIPT_DIR}/teardown.sh" --delete-cluster
+    "${TARGET_DIR}/00-setup/teardown.sh" --delete-cluster
   else
     info "Running teardown.sh (BYO cluster mode)..."
-    "${SCRIPT_DIR}/teardown.sh"
+    "${TARGET_DIR}/00-setup/teardown.sh"
   fi
 
   # Report results
