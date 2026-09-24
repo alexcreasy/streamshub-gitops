@@ -213,7 +213,7 @@ test_lesson_1() {
   info "========================================="
 
   # Step 1: Run prep script
-  info "Step 1/7: Running lesson-1 prep.sh..."
+  info "Step 1/8: Running lesson-1 prep.sh..."
   if ! "${SCRIPT_DIR}/../01-lesson-1/prep.sh"; then
     error "Lesson 1 prep.sh failed"
     TEST_FAILURES+=("${test_name}: prep failed")
@@ -223,13 +223,13 @@ test_lesson_1() {
   # Step 2: Clone repo
   local repo_dir="${TUTORIAL_WORK_DIR}/lesson-1-repo"
   LESSON_REPOS+=("${repo_dir}")
-  info "Step 2/7: Cloning Gitea repository..."
+  info "Step 2/8: Cloning Gitea repository..."
   git clone "$(gitea_clone_url)" "${repo_dir}" 2>/dev/null
   cd "${repo_dir}"
   configure_git_identity
 
   # Step 3: Verify initial state (topic.yaml should be in manifests but not in kustomization)
-  info "Step 3/7: Verifying initial state..."
+  info "Step 3/8: Verifying initial state..."
   if ! [[ -f manifests/topic.yaml ]]; then
     error "manifests/topic.yaml should exist"
     TEST_FAILURES+=("${test_name}: topic.yaml missing from manifests")
@@ -245,7 +245,7 @@ test_lesson_1() {
   info "Initial kustomization.yaml contains topic.yaml: ${initial_has_topic} times"
 
   # Step 4: Add topic.yaml to kustomization (if not already present)
-  info "Step 4/7: Ensuring topic.yaml is in kustomization.yaml..."
+  info "Step 4/8: Ensuring topic.yaml is in kustomization.yaml..."
   if ! grep -q "topic.yaml" manifests/kustomization.yaml 2>/dev/null; then
     echo "  - topic.yaml" >> manifests/kustomization.yaml
     info "Added topic.yaml to kustomization"
@@ -258,7 +258,7 @@ test_lesson_1() {
   cat manifests/kustomization.yaml
 
   # Step 5: Commit and push
-  info "Step 5/7: Committing and pushing change..."
+  info "Step 5/8: Committing and pushing change..."
   local new_revision
   if ! new_revision=$(git_commit_and_push "Add my-first-topic Kafka topic"); then
     error "git commit/push failed"
@@ -276,7 +276,7 @@ test_lesson_1() {
   fi
 
   # Step 6: Wait for ArgoCD sync
-  info "Step 6/7: Waiting for ArgoCD sync..."
+  info "Step 6/8: Waiting for ArgoCD sync..."
   if ! verify_argocd_sync "kafka-tutorial" "${new_revision}"; then
     TEST_FAILURES+=("${test_name}: ArgoCD sync failed")
     cd - >/dev/null
@@ -290,7 +290,7 @@ test_lesson_1() {
   kubectl get kafkatopic -n kafka-tutorial || echo "No topics found"
 
   # Step 7: Verify topic created and ready
-  info "Step 7/7: Verifying topic ready..."
+  info "Step 7/8: Verifying topic ready..."
   if ! verify_resource_ready "kafkatopic" "my-first-topic" "kafka-tutorial"; then
     TEST_FAILURES+=("${test_name}: topic not ready")
     cd - >/dev/null
@@ -298,6 +298,7 @@ test_lesson_1() {
   fi
 
   # Step 8: Verify topic has correct partition count
+  info "Step 8/8: Verifying partition count..."
   if ! verify_field_value "kafkatopic" "my-first-topic" "kafka-tutorial" \
        '{.spec.partitions}' "3"; then
     TEST_FAILURES+=("${test_name}: partition count incorrect")
@@ -318,7 +319,7 @@ test_lesson_2() {
   info "========================================="
 
   # Step 1: Run prep script
-  info "Step 1/8: Running lesson-2 prep.sh..."
+  info "Step 1/9: Running lesson-2 prep.sh..."
   if ! "${SCRIPT_DIR}/../02-lesson-2/prep.sh"; then
     error "Lesson 2 prep.sh failed"
     TEST_FAILURES+=("${test_name}: prep failed")
@@ -328,13 +329,13 @@ test_lesson_2() {
   # Step 2: Clone repo
   local repo_dir="${TUTORIAL_WORK_DIR}/lesson-2-repo"
   LESSON_REPOS+=("${repo_dir}")
-  info "Step 2/8: Cloning Gitea repository..."
+  info "Step 2/9: Cloning Gitea repository..."
   git clone "$(gitea_clone_url)" "${repo_dir}" 2>/dev/null
   cd "${repo_dir}"
   configure_git_identity
 
   # Step 3: Verify staging has topic, production does not
-  info "Step 3/8: Verifying initial multi-environment state..."
+  info "Step 3/9: Verifying initial multi-environment state..."
   info "Waiting for topic to exist in staging..."
 
   # Poll for topic existence
@@ -363,7 +364,7 @@ test_lesson_2() {
   fi
 
   # Step 4: Verify production kustomization does not have topic
-  info "Step 4/8: Verifying production kustomization..."
+  info "Step 4/9: Verifying production kustomization..."
   if grep -q "topic.yaml" manifests/overlays/production/kustomization.yaml; then
     error "topic.yaml should not be in production kustomization initially"
     TEST_FAILURES+=("${test_name}: production kustomization already has topic")
@@ -372,12 +373,12 @@ test_lesson_2() {
   fi
 
   # Step 5: Promote to production (copy topic and update kustomization)
-  info "Step 5/8: Promoting topic to production..."
+  info "Step 5/9: Promoting topic to production..."
   cp manifests/overlays/staging/topic.yaml manifests/overlays/production/topic.yaml
   echo "  - topic.yaml" >> manifests/overlays/production/kustomization.yaml
 
   # Step 6: Commit and push
-  info "Step 6/8: Committing and pushing promotion..."
+  info "Step 6/9: Committing and pushing promotion..."
   local new_revision
   if ! new_revision=$(git_commit_and_push "Promote my-first-topic to production"); then
     error "git commit/push failed"
@@ -392,7 +393,7 @@ test_lesson_2() {
   fi
 
   # Step 7: Wait for production ArgoCD sync
-  info "Step 7/8: Waiting for production ArgoCD sync..."
+  info "Step 7/9: Waiting for production ArgoCD sync..."
   if ! verify_argocd_sync "kafka-production" "${new_revision}"; then
     TEST_FAILURES+=("${test_name}: production ArgoCD sync failed")
     cd - >/dev/null
@@ -400,14 +401,15 @@ test_lesson_2() {
   fi
 
   # Step 8: Verify topic now exists in production
-  info "Step 8/8: Verifying topic exists in production..."
+  info "Step 8/9: Verifying topic exists in production..."
   if ! verify_resource_ready "kafkatopic" "my-first-topic" "kafka-production"; then
     TEST_FAILURES+=("${test_name}: production topic not ready")
     cd - >/dev/null
     return 1
   fi
 
-  # Verify staging still has the topic (unchanged)
+  # Step 9: Verify staging still has the topic (unchanged)
+  info "Step 9/9: Verifying staging topic unchanged..."
   if ! kubectl get kafkatopic my-first-topic -n kafka-staging &>/dev/null; then
     error "Staging topic should still exist"
     TEST_FAILURES+=("${test_name}: staging topic disappeared")
@@ -428,7 +430,7 @@ test_lesson_3() {
   info "========================================="
 
   # Step 1: Run prep script
-  info "Step 1/10: Running lesson-3 prep.sh..."
+  info "Step 1/12: Running lesson-3 prep.sh..."
   if ! "${SCRIPT_DIR}/../03-lesson-3/prep.sh"; then
     error "Lesson 3 prep.sh failed"
     TEST_FAILURES+=("${test_name}: prep failed")
@@ -438,13 +440,13 @@ test_lesson_3() {
   # Step 2: Clone repo
   local repo_dir="${TUTORIAL_WORK_DIR}/lesson-3-repo"
   LESSON_REPOS+=("${repo_dir}")
-  info "Step 2/10: Cloning Gitea repository..."
+  info "Step 2/12: Cloning Gitea repository..."
   git clone "$(gitea_clone_url)" "${repo_dir}" 2>/dev/null
   cd "${repo_dir}"
   configure_git_identity
 
   # Step 3: Verify initial healthy state
-  info "Step 3/10: Verifying initial healthy state..."
+  info "Step 3/12: Verifying initial healthy state..."
   if ! verify_resource_ready "kafkatopic" "my-first-topic" "kafka-tutorial"; then
     TEST_FAILURES+=("${test_name}: topic not ready initially")
     cd - >/dev/null
@@ -459,13 +461,13 @@ test_lesson_3() {
   fi
 
   # Step 4: Make breaking change (reduce partitions)
-  info "Step 4/10: Making breaking change (reducing partitions from 3 to 1)..."
+  info "Step 4/12: Making breaking change (reducing partitions from 3 to 1)..."
   # Use .bak extension for macOS compatibility, then remove it
   sed -i.bak 's/partitions: 3/partitions: 1/' manifests/topic.yaml
   rm -f manifests/topic.yaml.bak
 
   # Step 5: Commit and push bad change
-  info "Step 5/10: Committing and pushing bad change..."
+  info "Step 5/12: Committing and pushing bad change..."
   local bad_revision
   if ! bad_revision=$(git_commit_and_push "Reduce my-first-topic to 1 partition"); then
     error "git commit/push failed"
@@ -480,7 +482,7 @@ test_lesson_3() {
   fi
 
   # Step 6: Wait for ArgoCD sync (it should sync successfully)
-  info "Step 6/10: Waiting for ArgoCD sync of bad change..."
+  info "Step 6/12: Waiting for ArgoCD sync of bad change..."
   if ! verify_argocd_sync "kafka-tutorial" "${bad_revision}"; then
     TEST_FAILURES+=("${test_name}: ArgoCD sync failed for bad change")
     cd - >/dev/null
@@ -488,7 +490,7 @@ test_lesson_3() {
   fi
 
   # Step 7: Wait for topic operator to reject bad change
-  info "Step 7/10: Waiting for topic operator to reject bad change..."
+  info "Step 7/12: Waiting for topic operator to reject bad change..."
   if ! wait_for_resource_not_ready "kafkatopic" "my-first-topic" "kafka-tutorial" "${NOT_READY_TIMEOUT}"; then
     TEST_FAILURES+=("${test_name}: topic did not become NOT ready after bad change")
     cd - >/dev/null
@@ -496,31 +498,33 @@ test_lesson_3() {
   fi
 
   # Step 8: Revert the bad change
-  info "Step 8/10: Reverting bad change with git revert..."
+  info "Step 8/12: Reverting bad change with git revert..."
   git revert HEAD --no-edit >&2
 
   # Step 9: Push the revert
-  info "Step 9/10: Pushing revert commit..."
+  info "Step 9/12: Pushing revert commit..."
   git push >&2
   local revert_revision
   revert_revision=$(git rev-parse HEAD)
 
   # Step 10: Wait for ArgoCD sync
-  info "Step 10/10: Waiting for ArgoCD sync of revert..."
+  info "Step 10/12: Waiting for ArgoCD sync of revert..."
   if ! verify_argocd_sync "kafka-tutorial" "${revert_revision}"; then
     TEST_FAILURES+=("${test_name}: ArgoCD sync failed for revert")
     cd - >/dev/null
     return 1
   fi
 
-  # Verify topic is ready again
+  # Step 11: Verify topic is ready again
+  info "Step 11/12: Verifying topic ready after revert..."
   if ! verify_resource_ready "kafkatopic" "my-first-topic" "kafka-tutorial" "${TOPIC_READY_AFTER_REVERT_TIMEOUT}"; then
     TEST_FAILURES+=("${test_name}: topic not ready after revert")
     cd - >/dev/null
     return 1
   fi
 
-  # Verify partitions back to 3
+  # Step 12: Verify partitions back to 3
+  info "Step 12/12: Verifying partition count restored..."
   if ! verify_field_value "kafkatopic" "my-first-topic" "kafka-tutorial" \
        '{.spec.partitions}' "3"; then
     TEST_FAILURES+=("${test_name}: partition count not restored")
