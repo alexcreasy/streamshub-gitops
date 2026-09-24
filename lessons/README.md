@@ -40,3 +40,24 @@ cd 01-lesson-1
 ```
 
 See [Getting Started](00-setup/README.md) for prerequisites and troubleshooting.
+
+---
+
+## Verifying the tutorials
+
+If you're contributing changes to the lessons, a smoke test script runs through all three lessons end-to-end to catch regressions, to run it:
+
+```bash
+cd 00-setup
+./smoke-test.sh --create-cluster
+```
+
+This creates its own disposable KinD cluster, runs each lesson's workflow, and tears the cluster down afterwards — it won't affect a cluster you're already using. Expect it to take 15–20 minutes.
+
+You can also run the tests against a pre-existing Kubernetes cluster. To run the tests against the current kubectl context:
+
+```bash
+cd 00-setup
+./smoke-test.sh
+```
+
