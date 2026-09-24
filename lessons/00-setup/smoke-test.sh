@@ -70,8 +70,9 @@ git_commit_and_push() {
     return 0
   fi
   # Redirect commit and push output to stderr so only SHA is captured
-  git commit -m "${message}" >&2
-  git push >&2
+  if ! git commit -m "${message}" >&2 || ! git push >&2; then
+    return 1
+  fi
   git rev-parse HEAD
 }
 
@@ -258,7 +259,13 @@ test_lesson_1() {
 
   # Step 5: Commit and push
   info "Step 5/7: Committing and pushing change..."
-  local new_revision=$(git_commit_and_push "Add my-first-topic Kafka topic")
+  local new_revision
+  if ! new_revision=$(git_commit_and_push "Add my-first-topic Kafka topic"); then
+    error "git commit/push failed"
+    TEST_FAILURES+=("${test_name}: git commit/push failed")
+    cd - >/dev/null
+    return 1
+  fi
 
   # Handle case where there were no changes
   if [[ -z "${new_revision}" ]]; then
@@ -371,7 +378,13 @@ test_lesson_2() {
 
   # Step 6: Commit and push
   info "Step 6/8: Committing and pushing promotion..."
-  local new_revision=$(git_commit_and_push "Promote my-first-topic to production")
+  local new_revision
+  if ! new_revision=$(git_commit_and_push "Promote my-first-topic to production"); then
+    error "git commit/push failed"
+    TEST_FAILURES+=("${test_name}: git commit/push failed")
+    cd - >/dev/null
+    return 1
+  fi
 
   # Handle case where there were no changes
   if [[ -z "${new_revision}" ]]; then
@@ -453,7 +466,13 @@ test_lesson_3() {
 
   # Step 5: Commit and push bad change
   info "Step 5/10: Committing and pushing bad change..."
-  local bad_revision=$(git_commit_and_push "Reduce my-first-topic to 1 partition")
+  local bad_revision
+  if ! bad_revision=$(git_commit_and_push "Reduce my-first-topic to 1 partition"); then
+    error "git commit/push failed"
+    TEST_FAILURES+=("${test_name}: git commit/push failed")
+    cd - >/dev/null
+    return 1
+  fi
 
   # Handle case where there were no changes
   if [[ -z "${bad_revision}" ]]; then
