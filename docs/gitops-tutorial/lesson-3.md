@@ -1,9 +1,100 @@
-# Lesson 3: Rolling Back a Bad Change
++++
+title = 'GitOps Lesson 3: Rolling Back a Bad Change'
++++
 
-**Series:** GitOps with StreamsHub — 3-part series  
-**Time:** ~25 minutes (plus ~5 minutes for prep)
+# Background
 
----
+In lesson 1, you made your first GitOps change: you edited a configuration file, pushed it to your Git repository, and watched ArgoCD reconcile the cluster to match. 
+In lesson 2, you scaled that workflow across multiple environments using Kustomize overlays, promoting a change from staging to production with nothing more than a configuration change and Git commit.
+
+But what happens when a change that looks perfectly valid turns out to be wrong? 
+The YAML is well-formed, Kubernetes accepts it, and ArgoCD reports a successful sync. 
+Yet underneath, the system is broken. 
+The configuration you pushed describes something the underlying platform cannot actually do. 
+This is not a hypothetical edge case. 
+It is a failure mode that every team running production infrastructure will encounter sooner or later.
+
+This lesson tackles that scenario head-on. 
+You will learn how to distinguish between a successful sync and a genuinely healthy deployment, and when things go wrong, how to roll back safely with a single commit.
+
+## Core Concepts
+
+### Sync Status vs Health Status
+
+ArgoCD tracks two independent statuses for every Application it manages. 
+*Sync status* tells you whether ArgoCD successfully applied the configuration files from your Git repository to Kubernetes. 
+When the Kubernetes API accepts the YAML, the Application is `Synced`. 
+*Health status* tells you whether the resources are actually functioning correctly.
+
+These two statuses are independent. 
+A resource can be `Synced` but `Degraded` or stuck in `Progressing` indefinitely. 
+This happens when Kubernetes stores the desired state without complaint, but the controller responsible for that resource cannot fulfill it. 
+A deployment is only truly complete when it is both Synced and Healthy. 
+Treating sync alone as a green light is a common and dangerous mistake.
+
+### Why "Synced but Unhealthy" Matters
+
+ArgoCD's responsibility ends at the Kubernetes API server. 
+It renders your manifests, applies them and confirms that Kubernetes accepted the request. 
+But whether the underlying platform, be it a message broker, a database, or any operator-managed system, can actually honour the change is a separate concern entirely.
+
+Consider a configuration change that the Kubernetes API accepts but the platform rejects. 
+The Custom Resource is stored, so ArgoCD reports `Synced`. 
+But the operator that manages that resource inspects the change, determines it violates a constraint of the system it manages and marks the resource as not ready. 
+ArgoCD sees this and reports `Progressing` or `Degraded`, but it cannot fix the problem. 
+The system is now in a state where the GitOps engine has done its job, yet the deployment is broken. 
+This is precisely the situation that demands a rollback.
+
+### Rollback as a Git Commit
+
+As you saw in Lesson 2, promotion was not a special operation, it was a change in configuration, pushed to a Git repository. 
+In precisely the same vein, a rollback is not a special operation. 
+There is no dedicated rollback command, no emergency cluster access, and no deployment pipeline to trigger. 
+The Git repository is the single source of truth, so fixing the cluster means fixing the configuration in the repository. 
+You simply create a new commit that returns the configuration to a known-good state, push it, and the reconciliation loop does the rest.
+
+This is the same workflow you used to deploy the original change. 
+The only difference is that the commit undoes something rather than introducing something new. 
+From Git's perspective, and from ArgoCD's, it is just another commit.
+
+### `git revert` vs `git reset --hard`
+
+There are two ways to undo a commit in Git, and they have very different implications in a GitOps context.
+
+`git revert <commit hash>` creates a new commit that applies the exact inverse of the target commit. 
+The breaking change stays in the history and the record of the rollback sits on top of it, maintaining an intact audit trail.
+This approach is additive and safe on shared branches because it does not alter any existing commits.
+
+`git reset --hard` followed by a force-push takes the opposite approach. 
+It rewrites history, removing the bad commit as if it never happened. 
+This is an anti-pattern as the audit trail is destroyed, leaving no record of the incident or its resolution. 
+
+The correct choice is `git revert`. 
+It preserves the full sequence of events and keeps the repository in a state that every collaborator can safely pull from.
+
+### Self-Healing Reconciliation
+
+Once the revert commit is pushed, the recovery is automatic. 
+ArgoCD detects the new commit on its next poll cycle and applies them to the cluster. 
+The operator sees the resource return to a valid state and marks it healthy. 
+No manual intervention on the cluster side is required.
+
+The complete sequence of the breaking change, failure and recovery is preserved in the Git commit history for anyone to inspect. 
+This is the power of treating your Git repository as the single source of truth: even incidents become part of the auditable record.
+
+## What to watch for in the lesson
+
+Now that you have explored the core concepts behind rollback and health monitoring, it is time to dive in. 
+As you do, look out for these moments where the concepts become concrete:
+
+* When ArgoCD shows `Synced` but `Progressing` after you push the breaking change, you are seeing the sync/health distinction in action. ArgoCD did its job, but the underlying system did not accept the change.
+* When you inspect the resource and see `Ready: False` with a reason explaining why the operation was rejected, you are seeing the platform enforce its own constraints independently of Kubernetes.
+* When you run `git revert` and push, you are performing a GitOps rollback. It is a new additive commit, it doesn't re-write history and the audit trail remains intact.
+* When the Application returns to `Synced` and `Healthy` without any kubectl commands, you are watching the self-healing reconciliation close the loop.
+
+You’re now ready to work through the hands-on tutorial that follows.
+
+# Tutorial
 
 ## What you will learn
 
@@ -16,15 +107,11 @@ By the end of this lesson you will understand:
 
 You will do this by deploying a configuration change that ArgoCD accepts but Strimzi rejects, observing the failure, and performing a GitOps rollback that heals the cluster automatically.
 
----
-
 ## Prerequisites
 
-If you haven't done this yet, run through the [Getting Started](../00-setup/README.md) guide. You only need to do this once. (takes ~8 minutes)
+If you haven't done this yet, run through the [Preparing For The Tutorials](setup.md) guide. You only need to do this once.
 
----
-
-## Background: Two things to understand before we start
+## Two things to understand before we start
 
 ### Sync status vs health status
 
@@ -39,8 +126,6 @@ These can disagree. A manifest can be `Synced` (Kubernetes stored the desired st
 ### GitOps rollback
 
 Because the configuration in the Git repository is the source of truth, rolling back is not a special operation — it is just another Git commit. You revert the bad commit, push, and the reconciler heals the cluster automatically. No `kubectl rollout undo`, no deployment pipeline, no emergency access needed.
-
----
 
 ## Setup
 
@@ -59,8 +144,6 @@ This takes approximately 5 minutes. It:
 When it finishes it prints the Gitea and ArgoCD credentials.
 
 You can re-run `./prep.sh` at any time to reset back to the lesson starting state. If you have already cloned the repo at `/tmp/gitops-lesson-3`, delete it first (`rm -rf /tmp/gitops-lesson-3`) because the reset rewrites the Gitea commit history.
-
----
 
 ## Part 1: Explore the starting state
 
@@ -122,8 +205,6 @@ cat manifests/topic.yaml
 
 Confirm `partitions: 3`. That number is about to change.
 
----
-
 ## Part 2: Deploy the breaking change
 
 **The scenario:** a team member decides to reduce `my-first-topic` from 3 partitions to 1 to save resources. It seems harmless. Kafka, however, does not allow partition counts to decrease — topics can gain partitions but never lose them.
@@ -160,8 +241,6 @@ kafka-tutorial   Synced        Progressing
 ```
 
 ArgoCD reports `Synced` — from its perspective, its job is done. It applied the manifest to Kubernetes and the API accepted it. But notice the `HEALTH STATUS` column: it says `Progressing`, not `Healthy`. ArgoCD is waiting for the resource to become ready, but something is wrong underneath. In the next section, you will find out what.
-
----
 
 ## Part 3: Detect the problem
 
@@ -217,8 +296,6 @@ This is the key distinction from the background section made real:
 Sync tells you whether ArgoCD succeeded. Health tells you whether the underlying system is in a good state. **Both matter, and they can disagree.** A deployment is not complete until it is both Synced and Healthy — not Synced and Progressing indefinitely.
 
 This situation — synced but not healthy — is exactly when a GitOps rollback is needed.
-
----
 
 ## Part 4: Rollback with git revert
 
@@ -283,8 +360,6 @@ This removes the bad commit as if it never existed. In a GitOps context this is 
 
 `git revert` is additive and safe. The full sequence of events stays in history for anyone to inspect.
 
----
-
 ## Part 5: Watch the recovery
 
 ArgoCD will pick up the revert within about 30 seconds. Watch the recovery:
@@ -337,8 +412,6 @@ abc1234 Reset to lesson-3 starting state
 
 The complete sequence is preserved: what was changed, when, and when it was reverted.
 
----
-
 ## How it worked
 
 ```
@@ -362,8 +435,6 @@ ArgoCD health check
 ```
 
 Note that the actual Kafka topic inside the broker never had its partition count changed. Strimzi protected the broker from the invalid operation the entire time. What `git revert` did was bring the configuration in the Git repository and the KafkaTopic CR back in sync with the broker's actual state.
-
----
 
 ## Optional: View the ArgoCD dashboard
 
@@ -396,34 +467,6 @@ Click the Application to open the resource tree. Click on `my-first-topic` to se
 - `git revert` is the correct GitOps rollback tool: it creates a new commit, preserves history, and is safe for shared branches
 - `git reset --hard` with force-push destroys the audit trail and causes problems for anyone who pulled the broken commit
 - Rollback in GitOps requires no special tooling — change the configuration in the Git repository, and the reconciler heals the cluster automatically
-
----
-
-## The complete picture
-
-| Lesson | What you learned |
-|--------|-----------------|
-| **Lesson 1** | The GitOps core loop: edit Git, ArgoCD deploys it |
-| **Lesson 2** | Kustomize overlays for multi-environment management; promotion is a Git change |
-| **Lesson 3** | Rollback is a Git change too; sync and health are separate — check both |
-
----
-
-## Cleanup
-
-When you are done with all lessons, delete the cluster:
-
-```bash
-../00-setup/teardown.sh
-```
-
-Clean up the cloned repo:
-
-```bash
-rm -rf /tmp/gitops-lesson-3
-```
-
----
 
 ## Troubleshooting
 
@@ -479,3 +522,7 @@ kubectl get deployment strimzi-cluster-operator -n strimzi-operator \
 ```
 
 It should show `*`. If not, re-run `../00-setup/setup.sh`.
+
+## What's next
+
+Congratulations, you've completed the third and final lesson of this series. Check out our (wrapping up)[wrapping-up.md] article to consolidate what you've learned and for some ideas for your next steps.

@@ -1,10 +1,10 @@
-# Getting Started
+# Preparing for the tutorials
 
-This directory sets up the shared infrastructure for the GitOps tutorial series. Run `setup.sh` once before starting any lesson.
-
----
+The tutorials within each lesson run against a Kubernetes cluster. This guide covers the one-time setup that deploys a cluster and installs everything the lessons need.
 
 ## Prerequisites
+
+You will need the following command-line tools:
 
 | Tool | Purpose | Install |
 |------|---------|---------|
@@ -21,7 +21,20 @@ Additionally, if you are using the `--create-cluster` flag to have the script pr
 
 **System requirements:** ~10 GB of available memory for Docker/Podman when using `--create-cluster`.
 
----
+
+## Cloning the repository
+
+To get access to the lesson materials, first clone the streamshub-gitops repository:
+
+```
+git clone https://github.com/streamshub/streamshub-gitops.git
+```
+
+Next change into the lessons directory:
+
+```
+cd streamshub-gitops/lessons
+```
 
 ## Setup
 
@@ -32,7 +45,7 @@ The simplest way to bootstrap the tutorial is to have the setup script create it
 Run the setup script from this directory:
 
 ```bash
-./setup.sh --create-cluster
+00-setup/setup.sh --create-cluster
 ```
 
 This takes approximately 8 minutes and creates a fully self-contained local environment:
@@ -54,7 +67,7 @@ If you already have a Kubernetes cluster (KinD set up differently, minikube, k3d
 
 ```bash
 kubectl config use-context <your-context>
-./setup.sh
+00-setup/setup.sh
 ```
 
 Things to know when using an existing cluster:
@@ -70,14 +83,12 @@ Things to know when using an existing cluster:
 
 `setup.sh` and every lesson's `prep.sh` always print the Gitea address they actually used.
 
----
-
 ## Starting a lesson
 
 After setup completes, follow the lesson guide of your choice:
-* [Lesson 1: Your First GitOps Change](../01-lesson-1/README.md)
-
----
+* [Lesson 1: Your First GitOps Change](../../docs/gitops-tutorial/lesson-1.md)
+* [Lesson 2: Promoting Changes Across Environments](../../docs/gitops-tutorial/lesson-2.md)
+* [Lesson 3: Rolling Back a Bad Change](../../docs/gitops-tutorial/lesson-3.md)
 
 ## Teardown
 
@@ -86,16 +97,14 @@ When you are done with all lessons:
 * If you used `--create-cluster` - delete the KinD cluster to remove everything:
 
   ```bash
-  ./teardown.sh --delete-cluster
+  00-setup/teardown.sh --delete-cluster
   ```
 
 * Otherwise (existing-cluster mode, the default), remove just the resources this tutorial installed, leaving the rest of the cluster untouched:
 
   ```bash
-  ./teardown.sh
+  00-setup/teardown.sh
   ```
-
----
 
 ## Troubleshooting
 

@@ -1,9 +1,70 @@
-# Lesson 1: Your First GitOps Change
++++
+title = 'GitOps Lesson 1: Your First GitOps Change'
++++
 
-**Series:** GitOps with StreamsHub — 3-part series  
-**Time:** ~20 minutes (plus ~8 minutes for first-time setup)
+# Background
 
----
+In our introductory article, "[Introduction to GitOps](../introduction/_index.md)" we explained how GitOps applies the proven principles of version control and continuous delivery (CD) to infrastructure, allowing you to treat operations the same way you treat code. 
+With GitOps, you skip clicking through menus and checking boxes. 
+Instead, you describe your system in a set of configuration files stored in a git repository. 
+This repository becomes your *single source of truth* for how everything should look. 
+You then rely on automation to turn your description into reality.
+
+This tutorial aims to give you a practical demonstration of two key GitOps concepts, Infrastructure as Code (IaC) and the reconciliation loop, alongside two tools that bring them to life: Kustomize and Argo CD.
+
+## Core Concepts
+
+### Infrastructure as Code
+
+IaC is the practice of managing and provisioning your infrastructure using configuration files rather than manual processes, e.g. ClickOps. 
+By treating infrastructure as code, you define your system's desired state in configuration files and check them into a version control system like a git repository. 
+This approach transforms operations, allowing you to track changes, collaborate, and automate deployments.
+
+Key benefits of adopting IaC include:
+
+* **Consistency and eliminating configuration drift**: By using versioned configuration files, you ensure environments remain consistent, effectively eliminating the manual changes that cause configuration drift.  
+* **Disaster recovery**: Because your infrastructure state is codified in version control, rebuilding your environment in the event of a failure is as straightforward as applying your existing configurations.  
+* **Reproducible builds**: IaC enables reliable, repeatable infrastructure deployments, ensuring that the same configuration results in the same environment every time.
+
+### Kustomize
+
+Kustomize is a configuration management tool built directly into the Kubernetes command line tool (`kubectl`), which simplifies managing Kubernetes objects.
+It enables IaC by allowing you to define a common "base" set of configuration files and then apply "overlays" to patch them for different environments, such as staging or production, without relying on messy templating. 
+This ensures that your configurations remain clean, consistent, and reproducible. 
+
+Throughout these lessons you will create, edit and deploy Kustomize manifests to effect changes to the deployed cluster. 
+You can learn more in the [official Kustomize documentation](https://kustomize.io/).
+
+### The Reconciliation Loop
+
+The reconciliation loop is the mechanism that transforms IaC into actual, running infrastructure by continuously monitoring the configuration repository and automatically applying changes to the running infrastructure to reach the desired state.
+By choosing off-the-shelf tooling, you gain significant speed and operational efficiency from this automation. 
+Popular tools that implement this reconciliation pattern include [Argo CD](https://argoproj.github.io/cd/) and [Flux](https://fluxcd.io).
+
+### Argo CD
+
+Argo CD is an open-source, CD tool that runs inside your Kubernetes cluster and implements the reconciliation loop described above. 
+It is the CD technology you will be working with in all the lessons in this series. 
+
+You tell Argo CD what to watch by creating an *Application* resource in Kubernetes, a small piece of configuration that says: "monitor this Git repository, look at this directory path, and deploy whatever you find there into this namespace." 
+Argo CD then polls the repository on a regular interval (every three minutes by default, however in our tutorial series we’ve reduced that to thirty seconds for convenience), renders the manifests it finds, and syncs the cluster to match.
+
+Argo CD exposes the state of this process through two key concepts: *sync status* and *health status*. 
+*Sync status* tells you whether the cluster matches the configuration in your Git repository; *Synced* means they match, whereas *OutOfSync* means Argo CD has detected a difference and will act on it. 
+In the lesson, you will see this status transition when you push a change: it moves from *Synced* to *OutOfSync* (Argo CD noticed the new commit) and back to *Synced* (Argo CD applied the change). 
+Health status is a separate concern that tells you whether the resources themselves are functioning correctly, we’ll explore health status in more detail in Lesson 3. 
+
+## What to watch for in the lesson
+
+Now that you’ve looked at the core concepts and technologies you’ll be working with in this lesson, it’s almost time to dive in, but as you do look out for these moments where the concepts above become concrete:
+
+* When you edit `kustomization.yaml`, you are declaratively changing the desired state of the cluster.  
+* When you run `git push`, you are updating the single source of truth. From this moment, the configuration in the repository says a topic should exist.  
+* When Argo CD's status transitions from `Synced` to `OutOfSync` and back to `Synced`, you are watching the reconciliation loop complete a full cycle: observe the change, calculate the required changes and then roll them out.  
+
+You’re now ready to work through the hands-on tutorial that follows.
+
+# Tutorial
 
 ## What you will learn
 
@@ -15,19 +76,13 @@ By the end of this lesson you will understand:
 
 You will do this by making a real change — adding a Kafka topic — and watching it flow automatically from Git to a running cluster, without ever running `kubectl apply` yourself.
 
----
-
 ## Prerequisites
 
-If you haven't done this yet, run through the [Getting Started](../00-setup/README.md) guide. You only need to do this once. (takes ~8 minutes)
+If you haven't done this yet, run through the [Preparing For The Tutorials](setup.md) guide. You only need to do this once.
 
----
-
-## Background: The GitOps idea in one paragraph
+## The GitOps idea in one paragraph
 
 In traditional operations you make changes to a running system by running commands directly against it — `kubectl apply`, a config panel, an API call. GitOps flips this around: a Git repository is the single source of truth for what the system should look like. A tool (in this case ArgoCD) watches the repository and continuously reconciles the live system to match. If the config in the git repository says a topic should exist, then the topic will be created. If you remove it from the config repository, it disappears from the cluster. You never touch the system directly; you only change the configuration in the repo. You now have, thanks to git, a record of all the changes made, when they were made and by who. You can also setup all kinds of sanity and safety checks to run against those changes before they are applied.
-
----
 
 ## Setup
 
@@ -40,8 +95,6 @@ Run the prep script from this directory:
 This takes under a minute. It resets the Gitea repository to the lesson-1 starting state and confirms that ArgoCD has synced. When it finishes it prints the Gitea and ArgoCD credentials.
 
 You can re-run `./prep.sh` at any time to reset back to the lesson starting state — useful if you make a mistake and want to start over without re-running the full setup.
-
----
 
 ## Part 1: Look at what's already running
 
@@ -112,8 +165,6 @@ ls manifests/
 
 `topic.yaml` is there — but because it is not in `kustomization.yaml`, ArgoCD ignores it. The cluster's state is determined entirely by what Kustomize includes, not by what files happen to exist in the folder.
 
----
-
 ## Part 2: Make your first GitOps change
 
 Your application team needs a Kafka topic to send and receive messages. Your job is to add it to the cluster — the GitOps way.
@@ -172,8 +223,6 @@ git push
 
 That's it. You've made your GitOps change. The commit is now in the repository that ArgoCD is watching.
 
----
-
 ## Part 3: Watch the GitOps loop
 
 ArgoCD polls the repository every 30 seconds. Watch it detect your change:
@@ -204,8 +253,6 @@ my-first-topic   my-cluster   3            1                    True
 
 **You just deployed a Kafka topic using GitOps.** The change went from your editor, through Git, through ArgoCD, and into the cluster — automatically.
 
----
-
 ## How it worked
 
 Here is the full sequence of what happened after you ran `git push`:
@@ -226,8 +273,6 @@ Strimzi Topic Operator watches for KafkaTopic resources
 
 The key point: **you never ran `kubectl apply`**. You changed Git, and the system reconciled itself to match. This is what GitOps means in practice.
 
----
-
 ## Optional: View the ArgoCD dashboard
 
 ArgoCD has a web UI where you can see the application's resource tree, sync history, and current state. In a separate terminal:
@@ -245,30 +290,6 @@ kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath='{.data.pas
 ```
 
 Log in with username `admin` and the password above. Click the `kafka-tutorial` application to see the full resource tree — Namespace, KafkaNodePool, Kafka, and now KafkaTopic, all managed by ArgoCD from a single Git repository.
-
----
-
-## Cleanup
-
-When you are done with all lessons, delete the cluster to remove everything:
-
-```bash
-../00-setup/teardown.sh
-```
-
-This deletes the KinD cluster and all resources within it. Clean up the cloned repo too:
-
-```bash
-rm -rf /tmp/gitops-lesson-1
-```
-
----
-
-## What's next
-
-In **Lesson 2: Promotion from Staging to Production**, you will build on this environment by creating separate staging and production configurations and walk through the process of promoting a change through environments — the same Git-as-source-of-truth principle, applied to multi-environment workflows.
-
----
 
 ## Troubleshooting
 
@@ -305,3 +326,7 @@ git show HEAD:manifests/kustomization.yaml
 ```
 
 Confirm `- topic.yaml` appears in the resources list. If it does not, re-edit, commit, and push.
+
+## What's next
+
+In [Lesson 2](lesson-2.md), you will build on this environment by creating separate staging and production configurations and walk through the process of promoting a change through environments — the same Git-as-source-of-truth principle, applied to multi-environment workflows.
